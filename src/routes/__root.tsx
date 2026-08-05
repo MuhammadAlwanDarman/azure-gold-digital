@@ -82,20 +82,24 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "STPI Zaid bin Tsabit" },
+      { title: "STPI Zaid bin Tsabit — Sekolah Islam Teknologi Unggulan" },
       {
         name: "description",
-        content: "Sekolah Islam modern TK–SMA: tahfidz, teknologi, dan akhlak mulia.",
+        content: "STPI Zaid bin Tsabit: sekolah Islam modern jenjang TK, SD, SMP, SMA dengan program tahfidz, coding, robotik, dan AI. PPDB online kini dibuka.",
       },
       { name: "author", content: "STPI Zaid bin Tsabit" },
-      { property: "og:title", content: "STPI Zaid bin Tsabit" },
+      { property: "og:title", content: "STPI Zaid bin Tsabit — Sekolah Islam Teknologi Unggulan" },
       {
         property: "og:description",
-        content: "Mencetak Generasi Qurani yang Unggul dalam Teknologi dan Berakhlak Mulia.",
+        content: "STPI Zaid bin Tsabit: sekolah Islam modern jenjang TK, SD, SMP, SMA dengan program tahfidz, coding, robotik, dan AI. PPDB online kini dibuka.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "STPI Zaid bin Tsabit — Sekolah Islam Teknologi Unggulan" },
+      { name: "twitter:description", content: "STPI Zaid bin Tsabit: sekolah Islam modern jenjang TK, SD, SMP, SMA dengan program tahfidz, coding, robotik, dan AI. PPDB online kini dibuka." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/001a9b7f-6f8a-48c2-8f0e-dd29a5651a68/id-preview-293806a2--4017a836-0a12-4f81-b4ec-a6c193e87699.lovable.app-1785935577663.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/001a9b7f-6f8a-48c2-8f0e-dd29a5651a68/id-preview-293806a2--4017a836-0a12-4f81-b4ec-a6c193e87699.lovable.app-1785935577663.png" },
     ],
     links: [
       {

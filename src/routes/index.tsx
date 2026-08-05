@@ -56,7 +56,7 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "STPI Zaid bin Tsabit — Sekolah Islam Teknologi Unggulan" },
       {
         property: "og:description",
-        content: "Mencetak Generasi Qurani yang Unggul dalam Teknologi dan Berakhlak Mulia. TK · SD · SMP · SMA.",
+        content: "STPI Zaid bin Tsabit: sekolah Islam modern jenjang TK, SD, SMP, SMA dengan program tahfidz, coding, robotik, dan AI. PPDB online kini dibuka.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
