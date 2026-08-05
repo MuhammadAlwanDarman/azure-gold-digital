@@ -10,11 +10,23 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as MasukRouteImport } from './routes/masuk'
+import { Route as PpdbRouteImport } from './routes/ppdb'
 import { Route as JenjangLevelRouteImport } from './routes/jenjang.$level'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MasukRoute = MasukRouteImport.update({
+  id: '/masuk',
+  path: '/masuk',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PpdbRoute = PpdbRouteImport.update({
+  id: '/ppdb',
+  path: '/ppdb',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JenjangLevelRoute = JenjangLevelRouteImport.update({
@@ -25,27 +37,35 @@ const JenjangLevelRoute = JenjangLevelRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/masuk': typeof MasukRoute
+  '/ppdb': typeof PpdbRoute
   '/jenjang/$level': typeof JenjangLevelRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/masuk': typeof MasukRoute
+  '/ppdb': typeof PpdbRoute
   '/jenjang/$level': typeof JenjangLevelRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/masuk': typeof MasukRoute
+  '/ppdb': typeof PpdbRoute
   '/jenjang/$level': typeof JenjangLevelRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/jenjang/$level'
+  fullPaths: '/' | '/masuk' | '/ppdb' | '/jenjang/$level'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/jenjang/$level'
-  id: '__root__' | '/' | '/jenjang/$level'
+  to: '/' | '/masuk' | '/ppdb' | '/jenjang/$level'
+  id: '__root__' | '/' | '/masuk' | '/ppdb' | '/jenjang/$level'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  MasukRoute: typeof MasukRoute
+  PpdbRoute: typeof PpdbRoute
   JenjangLevelRoute: typeof JenjangLevelRoute
 }
 
@@ -56,6 +76,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/masuk': {
+      id: '/masuk'
+      path: '/masuk'
+      fullPath: '/masuk'
+      preLoaderRoute: typeof MasukRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ppdb': {
+      id: '/ppdb'
+      path: '/ppdb'
+      fullPath: '/ppdb'
+      preLoaderRoute: typeof PpdbRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/jenjang/$level': {
@@ -70,6 +104,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  MasukRoute: MasukRoute,
+  PpdbRoute: PpdbRoute,
   JenjangLevelRoute: JenjangLevelRoute,
 }
 export const routeTree = rootRouteImport
