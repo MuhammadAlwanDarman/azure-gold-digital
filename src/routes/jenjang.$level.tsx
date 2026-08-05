@@ -1,7 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { CalendarDays, GraduationCap, ImageIcon, Users } from "lucide-react";
 import heroImg from "@/assets/hero-campus.jpg";
-import { JENJANG } from "@/lib/school-data";
+import { JENJANG, type Jenjang } from "@/lib/school-data";
 import { AuroraBackground, Magnetic, Particles, Reveal, Stagger, StaggerItem, Tilt } from "@/components/site/effects";
 
 export const Route = createFileRoute("/jenjang/$level")({
@@ -31,7 +31,7 @@ export const Route = createFileRoute("/jenjang/$level")({
 });
 
 function JenjangPage() {
-  const { jenjang } = Route.useLoaderData();
+  const { jenjang } = Route.useLoaderData() as { jenjang: Jenjang };
 
   return (
     <>

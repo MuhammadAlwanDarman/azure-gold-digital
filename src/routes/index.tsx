@@ -260,7 +260,7 @@ function JenjangSection() {
 
         <Stagger className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {JENJANG.map((j, i) => {
-            const Icon = icons[i % icons.length];
+            const Icon = icons[i % icons.length]!;
             return (
               <StaggerItem key={j.slug}>
                 <Tilt className="h-full">
@@ -370,8 +370,8 @@ function VirtualTour() {
                 />
               ))}
               <div className="glass absolute bottom-4 left-4 right-4 rounded-2xl p-4">
-                <p className="text-sm font-bold text-gold">{spots[spot].name}</p>
-                <p className="text-xs text-primary-foreground/80">{spots[spot].desc}</p>
+                <p className="text-sm font-bold text-gold">{spots[spot]!.name}</p>
+                <p className="text-xs text-primary-foreground/80">{spots[spot]!.desc}</p>
               </div>
             </Tilt>
           </Reveal>
