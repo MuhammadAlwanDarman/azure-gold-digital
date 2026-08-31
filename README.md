@@ -4,7 +4,7 @@ Buatkan sebuah Website Sekolah Premium Kelas Dunia dengan kualitas setara websit
 
 Nama Sekolah:
 
-STPI ZAID BIN TSABIT
+PKBM ZAID BIN TSABIT
 
 Motto:
 
