@@ -139,21 +139,10 @@ function MasukPage() {
       if (p === "daftar") setTab("daftar");
     }
     const unsubscribe = subscribeToDB(() => {
-      const s = getCurrentSession();
-      console.log("[masuk] subscribeToDB → setSession role =", s?.role ?? null);
-      setSession(s);
+      setSession(getCurrentSession());
     });
     return unsubscribe;
   }, []);
-
-  useEffect(() => {
-    console.log(
-      "[masuk] render decision → session.role =",
-      session?.role ?? null,
-      "→ dashboard:",
-      !session ? "LOGIN" : session.role === "admin" ? "ADMIN" : "ORANG TUA"
-    );
-  }, [session]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -465,7 +454,8 @@ function DashboardOrangTua({ session, onLogout }: { session: UserSession; onLogo
     return subscribeToDB(() => {
       void load();
     });
-  }, [session]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.userId, session.email, session.name]);
 
   const activeSubmission = submissions.find((s) => s.id === selectedSubId) || submissions[0];
   const unpaidItems = billingInfo?.items?.filter((i) => i.status !== "Lunas") || [];

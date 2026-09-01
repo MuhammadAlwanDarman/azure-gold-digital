@@ -1,4 +1,4 @@
-import type { Session } from "@supabase/supabase-js";
+import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { supabase, signDocUrls } from "@/lib/supabase";
 
 // =================================================================
@@ -176,42 +176,70 @@ export interface SPPPayment {
 // (Realtime lintas-tab/device ditangani supabase channel di subscribeToDB.)
 // =================================================================
 
-const DB_CHANGE_EVENT = "pkbm_db_changed";
+// Satu set subscriber + SATU Realtime channel + SATU listener window untuk seluruh
+// aplikasi. `subscribeToDB()` cuma menamb/menghapus callback dari set — TIDAK
+// membuat channel/listener baru tiap dipanggil (dulu ini bikin churn websocket +
+// loop re-render sampai halaman freeze).
+
+const dbSubscribers = new Set<() => void>();
+
+function fanoutDBChange(): void {
+  dbSubscribers.forEach((cb) => {
+    try {
+      cb();
+    } catch (e) {
+      console.error("[db] subscriber error:", e);
+    }
+  });
+}
 
 function notifyChange(): void {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event(DB_CHANGE_EVENT));
+  fanoutDBChange();
+}
+
+let sharedChannel: RealtimeChannel | null = null;
+let channelState: "none" | "active" | "disabled" = "none";
+
+function ensureRealtimeChannel(): void {
+  if (typeof window === "undefined" || channelState !== "none") return;
+  channelState = "active";
+  try {
+    sharedChannel = supabase
+      .channel("zbt-db-shared")
+      .on("postgres_changes", { event: "*", schema: "public", table: "ppdb_submissions" }, fanoutDBChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "spp_payments" }, fanoutDBChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_billings" }, fanoutDBChange)
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          // Realtime kemungkinan belum diaktifkan untuk tabel ini — jangan retry
+          // selamanya. Refresh in-tab tetap jalan lewat notifyChange().
+          channelState = "disabled";
+          if (sharedChannel) {
+            try {
+              supabase.removeChannel(sharedChannel);
+            } catch {
+              /* ignore */
+            }
+            sharedChannel = null;
+          }
+        }
+      });
+  } catch (e) {
+    channelState = "disabled";
+    console.error("[db] gagal membuat Realtime channel:", e);
   }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", fanoutDBChange);
 }
 
 export function subscribeToDB(callback: () => void): () => void {
   if (typeof window === "undefined") return () => {};
-
-  window.addEventListener(DB_CHANGE_EVENT, callback);
-  window.addEventListener("storage", callback);
-
-  const { data: authSub } = supabase.auth.onAuthStateChange(() => callback());
-
-  const channel = supabase
-    .channel(`zbt-db-${Math.random().toString(36).slice(2)}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "ppdb_submissions" }, () => callback())
-    .on("postgres_changes", { event: "*", schema: "public", table: "spp_payments" }, () => callback())
-    .on("postgres_changes", { event: "*", schema: "public", table: "user_billings" }, () => callback())
-    .subscribe();
-
+  dbSubscribers.add(callback);
+  ensureRealtimeChannel();
   return () => {
-    window.removeEventListener(DB_CHANGE_EVENT, callback);
-    window.removeEventListener("storage", callback);
-    try {
-      authSub.subscription.unsubscribe();
-    } catch {
-      /* ignore */
-    }
-    try {
-      supabase.removeChannel(channel);
-    } catch {
-      /* ignore */
-    }
+    dbSubscribers.delete(callback);
   };
 }
 
@@ -277,8 +305,6 @@ async function fetchProfile(userId: string): Promise<{ name: string; role: UserR
       .eq("id", userId)
       .maybeSingle();
 
-    console.log("[db] fetchProfile", { userId, data, error: error?.message ?? null });
-
     if (error) {
       console.error(
         "[db] Gagal membaca tabel `profiles` (kemungkinan belum ada RLS policy SELECT untuk `authenticated`):",
@@ -296,7 +322,6 @@ async function fetchProfile(userId: string): Promise<{ name: string; role: UserR
       return null;
     }
     const role = normalizeRole((data as Record<string, unknown>)["role"]);
-    console.log("[db] fetchProfile OK →", { rawRole: (data as Record<string, unknown>)["role"], role });
     return {
       name: ((data as Record<string, unknown>)["name"] as string) || "",
       role,
@@ -307,34 +332,42 @@ async function fetchProfile(userId: string): Promise<{ name: string; role: UserR
   }
 }
 
+/** Tanda-tangan sesi untuk deteksi perubahan nyata (token DIABAIKAN — tidak dipakai UI,
+ * dan refresh token tiap ~1 jam tidak boleh memicu re-render). */
+function sessionSig(s: UserSession | null): string {
+  return s ? `${s.userId}|${s.role}|${s.name}|${s.email}` : "";
+}
+
 /**
- * Refresh cache sesi dari state auth. SATU kali tulis + notify, SETELAH role
- * otoritatif diketahui — tidak pernah menulis sesi "provisional" yang bisa
- * menurunkan role admin ke orangtua di tengah proses.
+ * Refresh cache sesi dari state auth. Hanya ganti `cachedSession` + `notifyChange()`
+ * kalau isinya BENAR-BENAR berubah — kalau sama, referensi lama dipertahankan supaya
+ * `setSession()` di komponen jadi no-op (mencegah loop re-render / freeze).
+ * Role otoritatif diambil dari `profiles` (fetchProfile) dan tidak pernah diturunkan
+ * untuk user yang sama kalau fetch gagal sesaat.
  */
 async function hydrateFromSupabase(supaSession: Session | null): Promise<void> {
   if (!supaSession || !supaSession.user) {
-    cachedSession = null;
-    notifyChange();
+    if (cachedSession !== null) {
+      cachedSession = null;
+      notifyChange();
+    }
     return;
   }
 
   const uid = supaSession.user.id;
   const prof = await fetchProfile(uid);
 
-  // Untuk user yang sama, jangan pernah menurunkan role/nama yang sudah diketahui
-  // benar hanya karena fetch profiles gagal sesaat.
   const prev = cachedSession && cachedSession.userId === uid ? cachedSession : null;
   const role: UserRole = prof?.role ?? prev?.role ?? metaRole(supaSession);
   const name = prof?.name || prev?.name || metaName(supaSession);
 
-  cachedSession = mapSession(supaSession, { name, role });
-  console.log("[db] hydrateFromSupabase → cachedSession.role =", role, {
-    fromProfiles: prof?.role ?? null,
-    fromPrev: prev?.role ?? null,
-    fromMeta: metaRole(supaSession),
-  });
-  notifyChange();
+  const next = mapSession(supaSession, { name, role });
+  // Hanya ganti referensi + broadcast kalau isi berubah. Kalau sama, biarkan objek
+  // lama (token yang mungkin basi tidak dipakai UI mana pun).
+  if (sessionSig(next) !== sessionSig(cachedSession)) {
+    cachedSession = next;
+    notifyChange();
+  }
 }
 
 if (typeof window !== "undefined") {
@@ -777,14 +810,6 @@ export async function loginUser(
 
   const session = mapSession(data.session, { name, role });
   cachedSession = session;
-  console.log("[db] loginUser RETURN → role =", role, {
-    userId: session.userId,
-    email: session.email,
-    fromProfiles: prof?.role ?? null,
-    fromMeta: metaRole(data.session),
-    user_metadata: data.session.user.user_metadata,
-    app_metadata: data.session.user.app_metadata,
-  });
   notifyChange();
   return { success: true, session };
 }
