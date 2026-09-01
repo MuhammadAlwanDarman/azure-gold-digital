@@ -49,7 +49,6 @@ import {
   Trash2,
   Truck,
   UserCheck,
-  UserPlus,
   Users,
   Utensils,
   X,
@@ -63,6 +62,7 @@ import {
   deletePPDBSubmission,
   deleteSPPPayment,
   deleteUserAccount,
+  getAllUserBillings,
   getAllUsers,
   getCurrentSession,
   getPPDBSubmissions,
@@ -74,6 +74,7 @@ import {
   loginUser,
   logoutUser,
   PPDBSubmission,
+  promoteUserToAdmin,
   registerUser,
   resetUserPassword,
   SPPPayment,
@@ -138,17 +139,28 @@ function MasukPage() {
       if (p === "daftar") setTab("daftar");
     }
     const unsubscribe = subscribeToDB(() => {
-      setSession(getCurrentSession());
+      const s = getCurrentSession();
+      console.log("[masuk] subscribeToDB → setSession role =", s?.role ?? null);
+      setSession(s);
     });
     return unsubscribe;
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  useEffect(() => {
+    console.log(
+      "[masuk] render decision → session.role =",
+      session?.role ?? null,
+      "→ dashboard:",
+      !session ? "LOGIN" : session.role === "admin" ? "ADMIN" : "ORANG TUA"
+    );
+  }, [session]);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
     setSubmitting(true);
     try {
-      const res = loginUser(loginEmail, loginPassword);
+      const res = await loginUser(loginEmail, loginPassword);
       if (!res.success) {
         setLoginError(res.error || t("Gagal masuk. Periksa email dan kata sandi Anda.", "Failed to sign in. Please check your credentials."));
       } else if (res.session) {
@@ -162,27 +174,39 @@ function MasukPage() {
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError("");
     setRegSuccess("");
-    const res = registerUser(regName, regEmail, regPassword, "orangtua");
-    if (!res.success) {
-      setRegError(res.error || t("Gagal mendaftar.", "Failed to register."));
-    } else if (res.session) {
-      setSession(res.session);
-    } else {
-      setRegSuccess(t("Akun berhasil dibuat! Silakan masuk dengan email dan kata sandi Anda.", "Account created successfully! Please sign in with your email and password."));
-      setLoginEmail(regEmail);
-      setLoginPassword(regPassword);
-      setTimeout(() => {
-        setTab("masuk");
-      }, 1200);
+    setSubmitting(true);
+    try {
+      const res = await registerUser(regName, regEmail, regPassword, "orangtua");
+      if (!res.success) {
+        setRegError(res.error || t("Gagal mendaftar.", "Failed to register."));
+      } else if (res.session) {
+        setSession(res.session);
+      } else {
+        setRegSuccess(t("Akun berhasil dibuat! Silakan masuk dengan email dan kata sandi Anda.", "Account created successfully! Please sign in with your email and password."));
+        setLoginEmail(regEmail);
+        setLoginPassword(regPassword);
+        setTimeout(() => {
+          setTab("masuk");
+        }, 1200);
+      }
+    } catch (err: any) {
+      console.error("Register error:", err);
+      setRegError(err?.message || t("Gagal mendaftar.", "Failed to register."));
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleLogout = () => {
-    logoutUser();
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     setSession(null);
   };
 
@@ -414,23 +438,33 @@ function DashboardOrangTua({ session, onLogout }: { session: UserSession; onLogo
   const { t } = useLanguage();
 
   useEffect(() => {
-    const load = () => {
-      setSubmissions(getPPDBSubmissionsByUser(session.userId, session.email, session.name));
-      setSppPayments(getSPPPaymentsByUser(session.userId, session.email, session.name));
-      const bill = getUserBilling(session.userId) || getUserBillingByEmail(session.email);
-      setBillingInfo(bill);
-      if (
-        bill &&
-        bill.isActive &&
-        bill.items &&
-        bill.items.length > 0 &&
-        bill.items.some((i) => i.status !== "Lunas")
-      ) {
-        setShowDistractionModal(true);
+    const load = async () => {
+      try {
+        const [subs, spp] = await Promise.all([
+          getPPDBSubmissionsByUser(session.userId, session.email, session.name),
+          getSPPPaymentsByUser(session.userId, session.email, session.name),
+        ]);
+        setSubmissions(subs);
+        setSppPayments(spp);
+        const bill = (await getUserBilling(session.userId)) || (await getUserBillingByEmail(session.email));
+        setBillingInfo(bill);
+        if (
+          bill &&
+          bill.isActive &&
+          bill.items &&
+          bill.items.length > 0 &&
+          bill.items.some((i) => i.status !== "Lunas")
+        ) {
+          setShowDistractionModal(true);
+        }
+      } catch (err) {
+        console.error("Gagal memuat data dashboard:", err);
       }
     };
-    load();
-    return subscribeToDB(load);
+    void load();
+    return subscribeToDB(() => {
+      void load();
+    });
   }, [session]);
 
   const activeSubmission = submissions.find((s) => s.id === selectedSubId) || submissions[0];
@@ -1114,6 +1148,7 @@ function DashboardAdmin({ session, onLogout }: { session: UserSession; onLogout:
  const [activeTab, setActiveTab] = useState<"ppdb" | "users" | "spp">("ppdb");
  const [submissions, setSubmissions] = useState<PPDBSubmission[]>([]);
  const [usersList, setUsersList] = useState<User[]>([]);
+ const [billingByUser, setBillingByUser] = useState<Record<string, UserBillingInfo | null>>({});
  const [sppList, setSppList] = useState<SPPPayment[]>([]);
  const [search, setSearch] = useState("");
  const [filterJenjang, setFilterJenjang] = useState("Semua");
@@ -1122,11 +1157,11 @@ function DashboardAdmin({ session, onLogout }: { session: UserSession; onLogout:
  const [sppStatusFilter, setSppStatusFilter] = useState<string>("all");
  const { t } = useLanguage();
 
-  // New Admin Form State
+  // "Jadikan Admin" (promote user terdaftar) — bukan buat akun baru dari nol.
   const [showAddAdmin, setShowAddAdmin] = useState(false);
-  const [newAdminName, setNewAdminName] = useState("");
-  const [newAdminEmail, setNewAdminEmail] = useState("");
-  const [newAdminPass, setNewAdminPass] = useState("");
+  const [promoteSearch, setPromoteSearch] = useState("");
+  const [promoteSelectedId, setPromoteSelectedId] = useState<string>("");
+  const [promoting, setPromoting] = useState(false);
   const [adminMsg, setAdminMsg] = useState("");
 
   // Bank Account Presets for PKBM Zaid bin Tsabit
@@ -1188,8 +1223,9 @@ function DashboardAdmin({ session, onLogout }: { session: UserSession; onLogout:
     items: [],
   });
 
-  const handleOpenBillingModal = (user: User) => {
-    const existing = user.billing || getUserBilling(user.id) || getUserBillingByEmail(user.email);
+  const handleOpenBillingModal = async (user: User) => {
+    const existing =
+      user.billing || billingByUser[user.id] || (await getUserBilling(user.id)) || (await getUserBillingByEmail(user.email));
     const parentSub = submissions.find(
       (s) => s.userId === user.id || s.userEmail.toLowerCase() === user.email.toLowerCase() || (s.wali && s.wali.toLowerCase() === user.name.toLowerCase())
     );
@@ -1394,8 +1430,9 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
     window.open(waUrl, "_blank");
   };
 
-  const handleQuickSendWAReminder = (user: User) => {
-    const userBilling = user.billing || getUserBilling(user.id) || getUserBillingByEmail(user.email);
+  const handleQuickSendWAReminder = async (user: User) => {
+    const userBilling =
+      user.billing || billingByUser[user.id] || (await getUserBilling(user.id)) || (await getUserBillingByEmail(user.email));
     if (!userBilling || !userBilling.items || userBilling.items.length === 0) {
       alert(t("User ini belum memiliki rincian tagihan.", "This user has no bills."));
       return;
@@ -1413,7 +1450,11 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
       );
       if (!input) return;
       targetPhone = input.trim();
-      updateUserBilling(user.id, { ...userBilling, teleponOrangTua: targetPhone });
+      try {
+        await updateUserBilling(user.id, { ...userBilling, teleponOrangTua: targetPhone });
+      } catch (err) {
+        console.error("Gagal menyimpan nomor WA:", err);
+      }
     }
 
     let cleanPhone = targetPhone.replace(/[^0-9]/g, "");
@@ -1430,7 +1471,7 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
     window.open(waUrl, "_blank");
   };
 
-  const handleValidateAndCancelBilling = (userId: string, userName?: string) => {
+  const handleValidateAndCancelBilling = async (userId: string, userName?: string) => {
     if (
       confirm(
         t(
@@ -1439,30 +1480,38 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
         )
       )
     ) {
-      validateOrCancelUserBilling(userId);
-      refreshData();
-      alert(
-        t(
-          `Tagihan untuk ${userName || "user"} berhasil divalidasi dan reminder telah dibatalkan! User kini bebas dari peringatan tagihan.`,
-          `Billing for ${userName || "user"} successfully validated and reminder cancelled!`
-        )
-      );
-      if (billingModalUser && billingModalUser.id === userId) {
-        setBillingModalUser(null);
+      try {
+        await validateOrCancelUserBilling(userId);
+        await refreshData();
+        alert(
+          t(
+            `Tagihan untuk ${userName || "user"} berhasil divalidasi dan reminder telah dibatalkan! User kini bebas dari peringatan tagihan.`,
+            `Billing for ${userName || "user"} successfully validated and reminder cancelled!`
+          )
+        );
+        if (billingModalUser && billingModalUser.id === userId) {
+          setBillingModalUser(null);
+        }
+      } catch (err) {
+        alert(t("Gagal memvalidasi tagihan: ", "Failed to validate billing: ") + (err as Error).message);
       }
     }
   };
 
-  const handleSaveBilling = (e: React.FormEvent) => {
+  const handleSaveBilling = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!billingModalUser) return;
-    updateUserBilling(billingModalUser.id, billingForm);
-    refreshData();
-    alert(t(`Data penagihan untuk akun ${billingModalUser.name} berhasil disimpan! Pengalihan (Distraction Popup) akan otomatis muncul saat user masuk.`, `Billing notice for ${billingModalUser.name} successfully saved!`));
-    setBillingModalUser(null);
+    try {
+      await updateUserBilling(billingModalUser.id, billingForm);
+      await refreshData();
+      alert(t(`Data penagihan untuk akun ${billingModalUser.name} berhasil disimpan! Pengalihan (Distraction Popup) akan otomatis muncul saat user masuk.`, `Billing notice for ${billingModalUser.name} successfully saved!`));
+      setBillingModalUser(null);
+    } catch (err) {
+      alert(t("Gagal menyimpan data penagihan: ", "Failed to save billing: ") + (err as Error).message);
+    }
   };
 
-  const handleClearBilling = () => {
+  const handleClearBilling = async () => {
     if (!billingModalUser) return;
     if (confirm(t(`Kosongkan semua tagihan dan nonaktifkan notifikasi penagihan untuk ${billingModalUser.name}?`, `Clear all bills and disable billing alert for ${billingModalUser.name}?`))) {
       const cleared: UserBillingInfo = {
@@ -1472,10 +1521,14 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
         pesanPenagih: "",
         items: [],
       };
-      updateUserBilling(billingModalUser.id, cleared);
-      refreshData();
-      alert(t("Tagihan berhasil dibersihkan / ditandai bebas tunggakan.", "Billing successfully cleared."));
-      setBillingModalUser(null);
+      try {
+        await updateUserBilling(billingModalUser.id, cleared);
+        await refreshData();
+        alert(t("Tagihan berhasil dibersihkan / ditandai bebas tunggakan.", "Billing successfully cleared."));
+        setBillingModalUser(null);
+      } catch (err) {
+        alert(t("Gagal membersihkan tagihan: ", "Failed to clear billing: ") + (err as Error).message);
+      }
     }
   };
 
@@ -2111,29 +2164,53 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
     printWindow.document.close();
   };
 
-  const refreshData = () => {
-    setSubmissions(getPPDBSubmissions());
-    setUsersList(getAllUsers());
-    setSppList(getSPPPayments());
+  const refreshData = async () => {
+    // Panel admin: query ini "select=* semua data". Jangan jalan kalau user bukan admin
+    // (mis. role sempat ter-flicker) supaya tidak menembak 403 berulang.
+    if (session.role !== "admin") return;
+    try {
+      const [subs, users, spp, billings] = await Promise.all([
+        getPPDBSubmissions(),
+        getAllUsers(),
+        getSPPPayments(),
+        getAllUserBillings(),
+      ]);
+      setSubmissions(subs);
+      setUsersList(users);
+      setSppList(spp);
+      setBillingByUser(billings);
+    } catch (err) {
+      console.error("Gagal memuat data admin:", err);
+    }
   };
 
-  const handleUpdateSPPStatus = (id: string, status: StatusPembayaranSPP) => {
+  const handleUpdateSPPStatus = async (id: string, status: StatusPembayaranSPP) => {
     // 1. Instant optimistic state update (0ms UI latency)
     setSppList((prev) =>
       prev.map((s) => (s.id === id ? { ...s, status, updatedAt: new Date().toISOString() } : s))
     );
     // 2. Background persistent update
-    updateSPPPaymentStatus(id, status);
-  };
-
-  const handleDeleteSPP = (id: string) => {
-    if (confirm(t("Hapus data transaksi pembayaran siswa siswi ini?", "Delete this payment transaction?"))) {
-      setSppList((prev) => prev.filter((s) => s.id !== id));
-      deleteSPPPayment(id);
+    try {
+      await updateSPPPaymentStatus(id, status);
+    } catch (err) {
+      alert(t("Gagal memperbarui status pembayaran: ", "Failed to update payment status: ") + (err as Error).message);
+      await refreshData();
     }
   };
 
-  const handleDeleteAllSPP = () => {
+  const handleDeleteSPP = async (id: string) => {
+    if (confirm(t("Hapus data transaksi pembayaran siswa siswi ini?", "Delete this payment transaction?"))) {
+      setSppList((prev) => prev.filter((s) => s.id !== id));
+      try {
+        await deleteSPPPayment(id);
+      } catch (err) {
+        alert(t("Gagal menghapus transaksi: ", "Failed to delete transaction: ") + (err as Error).message);
+        await refreshData();
+      }
+    }
+  };
+
+  const handleDeleteAllSPP = async () => {
     if (sppList.length === 0) {
       alert(t("Belum ada data pembayaran siswa siswi untuk dihapus.", "No payment records to delete."));
       return;
@@ -2154,13 +2231,19 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
       )
     );
     if (confirm2?.trim().toUpperCase() === "HAPUS") {
+      const prev = sppList;
       setSppList([]);
-      deleteAllSPPPayments();
-      alert(t(`Berhasil menghapus seluruh (${count}) data transaksi pembayaran siswa siswi.`, `Successfully deleted all (${count}) payment records.`));
+      try {
+        await deleteAllSPPPayments();
+        alert(t(`Berhasil menghapus seluruh (${count}) data transaksi pembayaran siswa siswi.`, `Successfully deleted all (${count}) payment records.`));
+      } catch (err) {
+        setSppList(prev);
+        alert(t("Gagal menghapus semua transaksi: ", "Failed to delete all transactions: ") + (err as Error).message);
+      }
     }
   };
 
-  const handleDeleteFilteredSPP = (listToDelete: SPPPayment[]) => {
+  const handleDeleteFilteredSPP = async (listToDelete: SPPPayment[]) => {
     if (listToDelete.length === 0) return;
     const count = listToDelete.length;
     if (
@@ -2171,16 +2254,32 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
         )
       )
     ) {
-      deleteBatchSPPPayments(listToDelete.map((item) => item.id));
-      refreshData();
-      alert(t(`Berhasil menghapus ${count} data pembayaran siswa siswi.`, `Successfully deleted ${count} payment records.`));
+      try {
+        await deleteBatchSPPPayments(listToDelete.map((item) => item.id));
+        await refreshData();
+        alert(t(`Berhasil menghapus ${count} data pembayaran siswa siswi.`, `Successfully deleted ${count} payment records.`));
+      } catch (err) {
+        alert(t("Gagal menghapus transaksi terpilih: ", "Failed to delete selected transactions: ") + (err as Error).message);
+      }
     }
   };
 
  useEffect(() => {
- refreshData();
- return subscribeToDB(refreshData);
- }, []);
+ void refreshData();
+ // Debounce: notifyChange() bisa meletup berkali-kali (auth event + realtime + tiap tulis).
+ let deb: ReturnType<typeof setTimeout> | null = null;
+ const unsub = subscribeToDB(() => {
+ if (deb) clearTimeout(deb);
+ deb = setTimeout(() => {
+ void refreshData();
+ }, 400);
+ });
+ return () => {
+ if (deb) clearTimeout(deb);
+ unsub();
+ };
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [session.role]);
 
   const filteredSubmissions = submissions.filter((item) => {
     const matchesSearch =
@@ -2195,7 +2294,7 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
  const verifiedCount = submissions.filter((s) => s.statusPendaftaran === "Terverifikasi" || s.statusPendaftaran === "Lulus Seleksi").length;
  const lunasCount = submissions.filter((s) => s.statusPembayaran === "Lunas").length;
 
-  const handleUpdateStatus = (id: string, statusPendaftaran: StatusPendaftaran, statusPembayaran: StatusPembayaran) => {
+  const handleUpdateStatus = async (id: string, statusPendaftaran: StatusPendaftaran, statusPembayaran: StatusPembayaran) => {
     // 1. Instant optimistic state update (0ms UI latency)
     setSubmissions((prev) =>
       prev.map((s) =>
@@ -2210,14 +2309,20 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
         : prev
     );
 
-    // 2. Synchronous in-memory & background persistent update
-    updatePPDBStatus(id, { statusPendaftaran, statusPembayaran });
+    // 2. Persist ke Supabase
+    try {
+      await updatePPDBStatus(id, { statusPendaftaran, statusPembayaran });
+    } catch (err) {
+      alert(t("Gagal memperbarui status pendaftaran: ", "Failed to update registration status: ") + (err as Error).message);
+      await refreshData();
+    }
   };
 
- const handleAssignTest = (id: string) => {
+ const handleAssignTest = async (id: string) => {
  const tanggal = prompt(t("Masukkan tanggal tes (contoh: Minggu, 22 Maret 2026):", "Enter test date (e.g. Sunday, March 22, 2026):"), "Minggu, 22 Maret 2026");
  if (!tanggal) return;
- updatePPDBStatus(id, {
+ try {
+ await updatePPDBStatus(id, {
  jadwalTes: {
  tanggal,
  waktu: "08.00 - 11.30 WIB",
@@ -2225,30 +2330,65 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
  lokasi: "PKBM Zaid bin Tsabit",
  },
  });
- refreshData();
+ await refreshData();
+ } catch (err) {
+ alert(t("Gagal menyimpan jadwal tes: ", "Failed to save test schedule: ") + (err as Error).message);
+ }
  };
 
- const handleDeleteSub = (id: string) => {
+ const handleDeleteSub = async (id: string) => {
  if (confirm(t("Apakah Anda yakin ingin menghapus data pendaftaran ini?", "Are you sure you want to delete this registration record?"))) {
- deletePPDBSubmission(id);
- refreshData();
+ try {
+ await deletePPDBSubmission(id);
+ await refreshData();
+ } catch (err) {
+ alert(t("Gagal menghapus data pendaftaran: ", "Failed to delete registration: ") + (err as Error).message);
+ }
  }
  };
 
- const handleCreateAdmin = (e: React.FormEvent) => {
- e.preventDefault();
- setAdminMsg("");
- const res = registerUser(newAdminName, newAdminEmail, newAdminPass, "admin");
- if (res.success) {
- setAdminMsg(t("Akun Admin berhasil ditambahkan!", "Admin account created successfully!"));
- setNewAdminName("");
- setNewAdminEmail("");
- setNewAdminPass("");
- setShowAddAdmin(false);
- refreshData();
- } else {
- setAdminMsg(res.error || t("Gagal membuat admin.", "Failed to create admin."));
- }
+ const promotableUsers = usersList
+   .filter((u) => u.role !== "admin")
+   .filter((u) => {
+     const q = promoteSearch.trim().toLowerCase();
+     if (!q) return true;
+     return (u.name || "").toLowerCase().includes(q) || (u.email || "").toLowerCase().includes(q);
+   });
+
+ const handlePromoteAdmin = async () => {
+   const target = usersList.find((u) => u.id === promoteSelectedId);
+   if (!target) {
+     setAdminMsg(t("Pilih dulu user yang akan dijadikan admin.", "Select a user to promote first."));
+     return;
+   }
+   const label = target.name || target.email || target.id;
+   if (
+     !confirm(
+       t(
+         `Yakin jadikan "${label}" sebagai admin?\n\nUser ini akan mendapat akses penuh ke seluruh data sekolah (pendaftar, pembayaran, akun).`,
+         `Promote "${label}" to admin?\n\nThis user will get full access to all school data (registrations, payments, accounts).`
+       )
+     )
+   ) {
+     return;
+   }
+   setPromoting(true);
+   setAdminMsg("");
+   try {
+     const res = await promoteUserToAdmin(target.id);
+     if (!res.success) {
+       setAdminMsg(t("Gagal menjadikan admin: ", "Failed to promote: ") + (res.error || ""));
+       return;
+     }
+     setAdminMsg(t(`"${label}" berhasil dijadikan admin.`, `"${label}" is now an admin.`));
+     setPromoteSelectedId("");
+     setPromoteSearch("");
+     await refreshData();
+   } catch (err) {
+     setAdminMsg(t("Gagal menjadikan admin: ", "Failed to promote: ") + (err as Error).message);
+   } finally {
+     setPromoting(false);
+   }
  };
 
  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
@@ -2257,24 +2397,30 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
  setVisiblePasswords((prev) => ({ ...prev, [userId]: !prev[userId] }));
  };
 
- const handleResetUserPass = (userId: string, userName: string) => {
+ const handleResetUserPass = async (userId: string, userName: string) => {
  const newPass = prompt(t(`Masukkan kata sandi baru untuk ${userName}:`, `Enter new password for ${userName}:`));
  if (!newPass) return;
  if (newPass.trim().length < 4) {
  alert(t("Kata sandi minimal 4 karakter.", "Password must be at least 4 characters."));
  return;
  }
- const ok = resetUserPassword(userId, newPass.trim());
- if (ok) {
- alert(t(`Kata sandi ${userName} berhasil diubah menjadi: ${newPass.trim()}`, `Password for ${userName} changed to: ${newPass.trim()}`));
- refreshData();
+ try {
+ await resetUserPassword(userId, newPass.trim());
+ alert(t(`Kata sandi ${userName} berhasil diubah.`, `Password for ${userName} changed.`));
+ await refreshData();
+ } catch (err) {
+ alert((err as Error).message);
  }
  };
 
- const handleDeleteUser = (userId: string) => {
+ const handleDeleteUser = async (userId: string) => {
  if (confirm(t("Hapus akun user ini dari database?", "Delete this user account from database?"))) {
- deleteUserAccount(userId);
- refreshData();
+ try {
+ await deleteUserAccount(userId);
+ await refreshData();
+ } catch (err) {
+ alert((err as Error).message);
+ }
  }
  };
 
@@ -2387,7 +2533,7 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
  }}
  className="flex items-center gap-2 rounded-full bg-gradient-to-r from-gold-soft to-gold px-5 py-2 text-xs font-extrabold uppercase tracking-wider text-navy-deep shadow-gold hover:scale-105 transition-all"
 >
- <UserPlus className="h-4 w-4" /> {t("Tambah Account Admin", "Add Admin Account")}
+ <ShieldCheck className="h-4 w-4" /> {t("Jadikan Admin", "Promote to Admin")}
  </button>
  </div>
  </div>
@@ -2594,12 +2740,12 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
  <div className="flex items-center justify-between border-b border-gold/30 pb-4 mb-4">
  <div className="flex items-center gap-3">
  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gold/20 text-gold">
- <UserPlus className="h-5 w-5" />
+ <ShieldCheck className="h-5 w-5" />
  </div>
  <div>
- <h3 className="text-lg font-extrabold text-gold">{t("Tambah Akun Administrator Baru", "Add New Administrator Account")}</h3>
+ <h3 className="text-lg font-extrabold text-gold">{t("Jadikan Admin", "Promote to Admin")}</h3>
  <p className="text-xs text-primary-foreground/75">
- {t("Buat hak akses admin pengelola baru untuk sistem sekolah.", "Create new admin credentials for school management.")}
+ {t("Pilih user terdaftar untuk diberi hak akses administrator.", "Pick a registered user to grant administrator access.")}
  </p>
  </div>
  </div>
@@ -2618,51 +2764,54 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
  </div>
  )}
 
- <form onSubmit={handleCreateAdmin} className="grid gap-4 sm:grid-cols-3">
- <div>
- <label className="block text-xs font-semibold text-gold mb-1">
- {t("Nama Lengkap Admin", "Admin Full Name")} *
- </label>
+ {promotableUsers.length === 0 && !promoteSearch.trim() ? (
+ <div className="rounded-2xl border border-white/15 bg-white/5 p-4 text-xs text-primary-foreground/80">
+ {t(
+ "Belum ada user terdaftar yang bisa dijadikan admin. Minta calon admin untuk mendaftar akun biasa terlebih dahulu di halaman \"Daftar Akun\", baru bisa dipromosikan dari sini.",
+ "No registered user is available to promote yet. Ask the prospective admin to register a normal account on the \"Create Account\" page first, then promote them from here."
+ )}
+ </div>
+ ) : (
+ <div className="space-y-3">
  <input
- required
  type="text"
- placeholder="Contoh: Ustadz Ahmad Admin"
- value={newAdminName}
- onChange={(e) => setNewAdminName(e.target.value)}
+ placeholder={t("Cari user berdasarkan nama atau email…", "Search user by name or email…")}
+ value={promoteSearch}
+ onChange={(e) => setPromoteSearch(e.target.value)}
  className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-2.5 text-xs text-white placeholder:text-white/50 focus:border-gold focus:outline-none"
  />
+
+ <div className="max-h-64 space-y-1.5 overflow-y-auto rounded-2xl border border-white/15 bg-white/5 p-2">
+ {promotableUsers.length === 0 ? (
+ <p className="px-2 py-3 text-xs text-primary-foreground/60">
+ {t("Tidak ada user yang cocok dengan pencarian.", "No user matches your search.")}
+ </p>
+ ) : (
+ promotableUsers.map((u) => {
+ const selected = promoteSelectedId === u.id;
+ return (
+ <button
+ key={u.id}
+ type="button"
+ onClick={() => setPromoteSelectedId(u.id)}
+ className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-xs transition-colors ${
+ selected ? "bg-gold text-navy-deep" : "text-white hover:bg-white/10"
+ }`}
+ >
+ <span className="min-w-0">
+ <span className="block truncate font-bold">{u.name || t("(Tanpa nama)", "(No name)")}</span>
+ <span className={`block truncate ${selected ? "text-navy-deep/70" : "text-primary-foreground/60"}`}>
+ {u.email || u.id}
+ </span>
+ </span>
+ {selected && <Check className="h-4 w-4 shrink-0" />}
+ </button>
+ );
+ })
+ )}
  </div>
 
- <div>
- <label className="block text-xs font-semibold text-gold mb-1">
- {t("Email Resmi Admin", "Official Admin Email")} *
- </label>
- <input
- required
- type="email"
- placeholder="admin2@zaidbintsabit.sch.id"
- value={newAdminEmail}
- onChange={(e) => setNewAdminEmail(e.target.value)}
- className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-2.5 text-xs text-white placeholder:text-white/50 focus:border-gold focus:outline-none"
- />
- </div>
-
- <div>
- <label className="block text-xs font-semibold text-gold mb-1">
- {t("Kata Sandi Admin", "Admin Password")} *
- </label>
- <input
- required
- type="password"
- minLength={6}
- placeholder="Minimal 6 karakter"
- value={newAdminPass}
- onChange={(e) => setNewAdminPass(e.target.value)}
- className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-2.5 text-xs text-white placeholder:text-white/50 focus:border-gold focus:outline-none"
- />
- </div>
-
- <div className="sm:col-span-3 flex justify-end gap-3 pt-2">
+ <div className="flex justify-end gap-3 pt-1">
  <button
  type="button"
  onClick={() =>setShowAddAdmin(false)}
@@ -2671,13 +2820,23 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
  {t("Batal", "Cancel")}
  </button>
  <button
- type="submit"
- className="rounded-full bg-gradient-to-r from-gold-soft to-gold px-6 py-2 text-xs font-extrabold uppercase tracking-wider text-navy-deep shadow-gold"
+ type="button"
+ disabled={!promoteSelectedId || promoting}
+ onClick={handlePromoteAdmin}
+ className="rounded-full bg-gradient-to-r from-gold-soft to-gold px-6 py-2 text-xs font-extrabold uppercase tracking-wider text-navy-deep shadow-gold disabled:opacity-40"
 >
- {t("Simpan Akun Admin", "Save Admin Account")}
+ {promoting ? t("Memproses…", "Processing…") : t("Jadikan Admin", "Promote to Admin")}
  </button>
  </div>
- </form>
+ </div>
+ )}
+
+ <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-relaxed text-primary-foreground/50">
+ {t(
+ "Catatan: pembuatan admin PERTAMA (saat belum ada akun sama sekali) hanya dilakukan sekali lewat Supabase dashboard saat setup awal — bukan alur harian.",
+ "Note: the FIRST admin (when no account exists yet) is set up once via the Supabase dashboard during initial setup — not a day-to-day flow."
+ )}
+ </p>
  </div>
  )}
 
@@ -2699,7 +2858,7 @@ _Jazakumullahu Khairan wa Barakallahu Fiikum._
             <tbody className="divide-y divide-border">
               {usersList.map((u) => {
                 const isPassVisible = visiblePasswords[u.id] ?? false;
-                const userBilling = u.billing || getUserBilling(u.id) || getUserBillingByEmail(u.email);
+                const userBilling = u.billing || billingByUser[u.id] || null;
                 const unpaids = userBilling?.items?.filter((i) => i.status !== "Lunas") || [];
                 const unpaidsTotal = unpaids.reduce((sum, i) => sum + (i.nominal || 0), 0);
                 const hasActiveBill = Boolean(userBilling?.isActive && unpaids.length > 0);

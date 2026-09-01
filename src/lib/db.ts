@@ -1,3 +1,12 @@
+import type { Session } from "@supabase/supabase-js";
+import { supabase, signDocUrls } from "@/lib/supabase";
+
+// =================================================================
+// DATA LAYER — sekarang di atas Supabase (Postgres + Auth + Storage).
+// Semua fungsi async (return Promise). Nama export dipertahankan supaya
+// pemanggil (routes/masuk, ppdb, spp, index, Navbar) tidak berubah kontrak.
+// =================================================================
+
 export type UserRole = "orangtua" | "admin";
 
 export interface UserBillItem {
@@ -10,34 +19,34 @@ export interface UserBillItem {
 }
 
 export interface UserBillingInfo {
-  isActive: boolean; // true if distraction popup and penagihan notice are active
-  penagihName: string; // nama penagih / unit administrasi keuangan
-  penagihKontak?: string; // nomor kontak / whatsapp penagih
-  teleponOrangTua?: string; // nomor whatsapp orang tua target penagihan
-  pesanPenagih: string; // tulisan / catatan penagih resmi
-  tanggalTagihan?: string; // tanggal diterbitkannya tagihan
+  isActive: boolean;
+  penagihName: string;
+  penagihKontak?: string;
+  teleponOrangTua?: string;
+  pesanPenagih: string;
+  tanggalTagihan?: string;
   items: UserBillItem[];
-  rekeningTujuan?: string; // rekening transfer sekolah
-  isValidated?: boolean; // true jika sudah divalidasi/dibatalkan oleh admin
-  validatedAt?: string; // waktu pembatalan/validasi
+  rekeningTujuan?: string;
+  isValidated?: boolean;
+  validatedAt?: string;
   updatedAt?: string;
 }
 
 export interface User {
- id: string;
- name: string;
- email: string;
- passwordHash: string; // Plain/hashed simulation
- role: UserRole;
- createdAt: string;
- billing?: UserBillingInfo;
+  id: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+  role: UserRole;
+  createdAt: string;
+  billing?: UserBillingInfo;
 }
 
 export interface JadwalTes {
- tanggal: string;
- waktu: string;
- ruang: string;
- lokasi: string;
+  tanggal: string;
+  waktu: string;
+  ruang: string;
+  lokasi: string;
 }
 
 export type StatusPendaftaran = "Draft" | "Menunggu Verifikasi" | "Terverifikasi" | "Lulus Seleksi" | "Ditolak";
@@ -48,894 +57,82 @@ export interface UploadedDocFile {
   name: string;
   size?: string;
   url: string;
+  /** key/path objek di Supabase Storage (untuk regenerate signed URL). */
+  path?: string;
+  /** dipakai sementara di form sebelum di-upload. */
+  file?: File;
 }
 
 export interface PPDBSubmission {
- id: string;
- regNo: string;
- userId: string;
- userEmail: string;
- jenjang: string;
- 
- // 1. Data Identitas Calon Siswa
- nama: string;
- namaPanggilan?: string;
- nikSiswa?: string;
- noAkta?: string;
- noKk?: string;
- nisn: string;
- tempatLahir?: string;
- lahir: string;
- jenisKelamin?: string;
- agama?: string;
- suku?: string;
- statusAnak?: string;
- anakKe?: string;
- transportasi?: string;
- tinggiBadan?: string;
- beratBadan?: string;
- riwayatPenyakit?: string;
- asalSekolah?: string;
- npsnAsal?: string;
- alamat: string;
+  id: string;
+  regNo: string;
+  userId: string;
+  userEmail: string;
+  jenjang: string;
 
- // 2. Data Ayah Kandung
- namaAyah?: string;
- nikAyah?: string;
- tempatLahirAyah?: string;
- tanggalLahirAyah?: string;
- pendidikanAyah?: string;
- pekerjaanAyah?: string;
- penghasilanAyah?: string;
- teleponAyah?: string;
- kebutuhanKhususAyah?: string;
+  nama: string;
+  namaPanggilan?: string;
+  nikSiswa?: string;
+  noAkta?: string;
+  noKk?: string;
+  nisn: string;
+  tempatLahir?: string;
+  lahir: string;
+  jenisKelamin?: string;
+  agama?: string;
+  suku?: string;
+  statusAnak?: string;
+  anakKe?: string;
+  transportasi?: string;
+  tinggiBadan?: string;
+  beratBadan?: string;
+  riwayatPenyakit?: string;
+  asalSekolah?: string;
+  npsnAsal?: string;
+  alamat: string;
 
- // 3. Data Ibu Kandung
- namaIbu?: string;
- nikIbu?: string;
- tempatLahirIbu?: string;
- tanggalLahirIbu?: string;
- pendidikanIbu?: string;
- pekerjaanIbu?: string;
- penghasilanIbu?: string;
- teleponIbu?: string;
+  namaAyah?: string;
+  nikAyah?: string;
+  tempatLahirAyah?: string;
+  tanggalLahirAyah?: string;
+  pendidikanAyah?: string;
+  pekerjaanAyah?: string;
+  penghasilanAyah?: string;
+  teleponAyah?: string;
+  kebutuhanKhususAyah?: string;
 
- // Wali & Kontak
- wali: string;
- telepon: string;
- email: string;
+  namaIbu?: string;
+  nikIbu?: string;
+  tempatLahirIbu?: string;
+  tanggalLahirIbu?: string;
+  pendidikanIbu?: string;
+  pekerjaanIbu?: string;
+  penghasilanIbu?: string;
+  teleponIbu?: string;
 
- dokumen: string[];
- dokumenFiles?: UploadedDocFile[];
- metode: string;
- buktiRegUrl?: string;
- catatanTambahan?: string;
- statusPendaftaran: StatusPendaftaran;
- statusPembayaran: StatusPembayaran;
- jadwalTes?: JadwalTes;
- createdAt: string;
- updatedAt: string;
+  wali: string;
+  telepon: string;
+  email: string;
+
+  dokumen: string[];
+  dokumenFiles?: UploadedDocFile[];
+  metode: string;
+  buktiRegUrl?: string;
+  catatanTambahan?: string;
+  statusPendaftaran: StatusPendaftaran;
+  statusPembayaran: StatusPembayaran;
+  jadwalTes?: JadwalTes;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UserSession {
- userId: string;
- name: string;
- email: string;
- role: UserRole;
- token: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  token: string;
 }
-
-const DB_USERS_KEY = "pkbm_db_users_v1";
-const DB_PPDB_KEY = "pkbm_db_ppdb_v1";
-const DB_SESSION_KEY = "pkbm_db_session_v1";
-
-// Event channel for live updates in client components
-const DB_CHANGE_EVENT = "pkbm_db_changed";
-
-function notifyChange() {
- if (typeof window !== "undefined") {
- window.dispatchEvent(new Event(DB_CHANGE_EVENT));
- }
-}
-
-export function subscribeToDB(callback: () => void) {
- if (typeof window === "undefined") return () => {};
- window.addEventListener(DB_CHANGE_EVENT, callback);
- window.addEventListener("storage", callback);
- return () => {
- window.removeEventListener(DB_CHANGE_EVENT, callback);
- window.removeEventListener("storage", callback);
- };
-}
-
-// Initial Data Seeding
-const SEED_USERS: User[] = [
-  {
-    id: "usr-admin-01",
-    name: "Administrator Utama",
-    email: "admin@zaidbintsabit.sch.id",
-    passwordHash: "admin123",
-    role: "admin",
-    createdAt: "2026-01-01T08:00:00.000Z",
-  },
-  {
-    id: "usr-parent-01",
-    name: "Ahmad Fauzi",
-    email: "orangtua@gmail.com",
-    passwordHash: "user123",
-    role: "orangtua",
-    createdAt: "2026-01-10T09:30:00.000Z",
-    billing: {
-      isActive: true,
-      penagihName: "Ustadzah Siti Fatimah (Bendahara PKBM Zaid bin Tsabit)",
-      penagihKontak: "6281234567890",
-      pesanPenagih: "Assalamu'alaikum Warahmatullahi Wabarakatuh Ayah/Bunda Ahmad Fauzi. Mengingatkan kembali kewajiban administrasi SPP & Iuran Sekolah Ananda Muhammad Rayhan Fauzi untuk periode September 2026. Mohon segera dilakukan pembayaran sebelum tanggal 10 September. Syukron wa Jazakumullahu Khairan.",
-      tanggalTagihan: "1 September 2026",
-      rekeningTujuan: "Bank Syariah Indonesia (BSI) 7757797757 a.n. PKBM ZAID BIN TSABIT",
-      items: [
-        {
-          id: "bill-01",
-          namaItem: "SPP Bulanan (September 2026)",
-          nominal: 750000,
-          jatuhTempo: "10 September 2026",
-          kategori: "SPP Bulanan",
-          status: "Belum Lunas",
-        },
-        {
-          id: "bill-02",
-          namaItem: "Modul & Bahan Pembelajaran IT Tahap 1",
-          nominal: 350000,
-          jatuhTempo: "15 September 2026",
-          kategori: "Buku Paket & Kitab",
-          status: "Belum Lunas",
-        },
-      ],
-      updatedAt: "2026-09-01T08:00:00.000Z",
-    },
-  },
-];
-
-const SEED_PPDB: PPDBSubmission[] = [
- {
- id: "ppdb-seed-01",
- regNo: "ZBT-2026-8821",
- userId: "usr-parent-01",
- userEmail: "orangtua@gmail.com",
- jenjang: "SMA",
- nama: "Muhammad Rayhan Fauzi",
- namaPanggilan: "Rayhan",
- nikSiswa: "6474011205100001",
- noAkta: "3374-LT-12052010-0021",
- noKk: "6474012903260001",
- nisn: "0081234567",
- tempatLahir: "Samarinda",
- lahir: "2010-05-12",
- jenisKelamin: "Laki-Laki",
- agama: "Islam",
- suku: "Banjar",
- statusAnak: "Anak Kandung",
- anakKe: "1",
- transportasi: "Sepeda Motor",
- tinggiBadan: "165",
- beratBadan: "52",
- riwayatPenyakit: "Alergi Debu (Ringan)",
- asalSekolah: "SMP Negeri 1 Samarinda",
- npsnAsal: "30401234",
- alamat: "Jl. Zaid bin Tsabit No. 45, Samarinda, Kalimantan Timur",
-
- namaAyah: "Ahmad Fauzi",
- nikAyah: "6474011508800002",
- tempatLahirAyah: "Samarinda",
- tanggalLahirAyah: "1980-08-15",
- pendidikanAyah: "S1/Sarjana",
- pekerjaanAyah: "Wiraswasta",
- penghasilanAyah: "Rp 5.000.000 - Rp 10.000.000",
- teleponAyah: "081234567890",
- kebutuhanKhususAyah: "Tidak ada",
-
- namaIbu: "Siti Rahmah",
- nikIbu: "6474012010830003",
- tempatLahirIbu: "Balikpapan",
- tanggalLahirIbu: "1983-10-20",
- pendidikanIbu: "S1/Sarjana",
- pekerjaanIbu: "Guru / Pendidik",
- penghasilanIbu: "Rp 3.000.000 - Rp 5.000.000",
- teleponIbu: "081298765432",
-
- wali: "Ahmad Fauzi",
- telepon: "081234567890",
- email: "orangtua@gmail.com",
- dokumen: ["Kartu Keluarga (KK)", "Akta Kelahiran", "Pas Foto 3x4", "Foto Depan / Tampak Rumah", "Bukti Screenshot Follow Social Media Sekolah"],
- metode: "Transfer Bank BSI",
- buktiRegUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='700' height='480' viewBox='0 0 700 480'><rect width='700' height='480' fill='%23f8fafc' stroke='%230f172a' stroke-width='8'/><rect x='20' y='20' width='660' height='60' fill='%230f172a'/><text x='350' y='55' font-family='sans-serif' font-size='18' font-weight='bold' fill='%23eab308' text-anchor='middle'>BUKTI RESMI BUKTI PEMBAYARAN SPMB</text><rect x='30' y='100' width='640' height='260' fill='%23ffffff' stroke='%23e2e8f0' stroke-width='2'/><text x='50' y='140' font-family='sans-serif' font-size='14' font-weight='bold' fill='%230f172a'>PEMBAYARAN REGISTRASI: ZBT-2026-8821</text><text x='50' y='175' font-family='sans-serif' font-size='13' fill='%23475569'>Nama Pendaftar: Muhammad Rayhan Fauzi</text><text x='50' y='205' font-family='sans-serif' font-size='13' fill='%23475569'>Metode: Bank Syariah Indonesia (BSI Transfer Instant)</text><text x='50' y='235' font-family='sans-serif' font-size='15' font-weight='bold' fill='%23047857'>Nominal: Rp 350.000 (LUNAS)</text><rect x='440' y='370' width='220' height='60' rx='30' fill='%23dcfce7' stroke='%2316a34a'/><text x='550' y='405' font-family='sans-serif' font-size='14' font-weight='bold' fill='%2315803d' text-anchor='middle'> BUKTI LUNAS</text></svg>",
- statusPendaftaran: "Terverifikasi",
- statusPembayaran: "Lunas",
- jadwalTes: {
- tanggal: "Minggu, 15 Maret 2026",
- waktu: "08.00 - 11.30 WITA",
- ruang: "Gedung Tahfizh lantai 2 (Ruang A)",
- lokasi: "Kampus Utama PKBM Zaid bin Tsabit",
- },
- createdAt: "2026-01-15T10:00:00.000Z",
- updatedAt: "2026-01-16T14:20:00.000Z",
- },
- {
- id: "ppdb-seed-02",
- regNo: "ZBT-2026-3412",
- userId: "usr-parent-guest-02",
- userEmail: "budi.santoso@yahoo.com",
- jenjang: "SMP",
- nama: "Aisha Santoso",
- namaPanggilan: "Aisha",
- nikSiswa: "6474016008130005",
- noAkta: "3374-LT-20082013-0089",
- noKk: "6474012903260002",
- nisn: "0098765432",
- tempatLahir: "Surakarta",
- lahir: "2013-08-20",
- jenisKelamin: "Perempuan",
- agama: "Islam",
- suku: "Jawa",
- statusAnak: "Anak Kandung",
- anakKe: "2",
- transportasi: "Mobil",
- tinggiBadan: "148",
- beratBadan: "40",
- riwayatPenyakit: "Tidak ada",
- asalSekolah: "SD Islam Terpadu Samarinda",
- npsnAsal: "30405678",
- alamat: "Jl. Slamet Riyadi No. 12, Samarinda, Kalimantan Timur",
-
- namaAyah: "Budi Santoso",
- nikAyah: "6474011005780004",
- tempatLahirAyah: "Surakarta",
- tanggalLahirAyah: "1978-05-10",
- pendidikanAyah: "S2/Magister",
- pekerjaanAyah: "Pegawai Negeri Sipil (PNS)",
- penghasilanAyah: "Rp 10.000.000 - Rp 20.000.000",
- teleponAyah: "085711223344",
- kebutuhanKhususAyah: "Tidak ada",
-
- namaIbu: "Dewi Maryam",
- nikIbu: "6474014512810006",
- tempatLahirIbu: "Semarang",
- tanggalLahirIbu: "1981-12-05",
- pendidikanIbu: "S1/Sarjana",
- pekerjaanIbu: "Ibu Rumah Tangga",
- penghasilanIbu: "Ibu Rumah Tangga (Rp 0)",
- teleponIbu: "085799887766",
-
- wali: "Budi Santoso",
- telepon: "085711223344",
- email: "budi.santoso@yahoo.com",
- dokumen: ["Kartu Keluarga (KK)", "Akta Kelahiran", "Pas Foto 3x4", "Foto Depan / Tampak Rumah", "Bukti Screenshot Follow Social Media Sekolah"],
- metode: "Transfer Bank BSI",
- buktiRegUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='700' height='480' viewBox='0 0 700 480'><rect width='700' height='480' fill='%23f8fafc' stroke='%230f172a' stroke-width='8'/><rect x='20' y='20' width='660' height='60' fill='%230f172a'/><text x='350' y='55' font-family='sans-serif' font-size='18' font-weight='bold' fill='%23eab308' text-anchor='middle'>BUKTI RESMI BUKTI PEMBAYARAN SPMB</text><rect x='30' y='100' width='640' height='260' fill='%23ffffff' stroke='%23e2e8f0' stroke-width='2'/><text x='50' y='140' font-family='sans-serif' font-size='14' font-weight='bold' fill='%230f172a'>PEMBAYARAN REGISTRASI: ZBT-2026-3412</text><text x='50' y='175' font-family='sans-serif' font-size='13' fill='%23475569'>Nama Pendaftar: Aisha Santoso</text><text x='50' y='205' font-family='sans-serif' font-size='13' fill='%23475569'>Metode: Bank Syariah Indonesia (BSI Transfer Instant)</text><text x='50' y='235' font-family='sans-serif' font-size='15' font-weight='bold' fill='%23047857'>Nominal: Rp 350.000 (LUNAS)</text><rect x='440' y='370' width='220' height='60' rx='30' fill='%23dcfce7' stroke='%2316a34a'/><text x='550' y='405' font-family='sans-serif' font-size='14' font-weight='bold' fill='%2315803d' text-anchor='middle'> BUKTI LUNAS</text></svg>",
- statusPendaftaran: "Menunggu Verifikasi",
- statusPembayaran: "Lunas",
- createdAt: "2026-02-01T11:15:00.000Z",
- updatedAt: "2026-02-01T11:15:00.000Z",
- },
-];
-
-// =================================================================
-// ENTERPRISE PERSISTENCE ENGINE (Memory + IndexedDB + LocalStorage)
-// Guarantees unlimited users, admins, forms, and transactions without quota crashes.
-// =================================================================
-
-const IDB_NAME = "zbt_school_database_v2";
-const IDB_VERSION = 1;
-const IDB_STORE = "portal_records";
-
-function openIDB(): Promise<IDBDatabase | null> {
-  if (typeof window === "undefined" || !window.indexedDB) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    try {
-      const req = window.indexedDB.open(IDB_NAME, IDB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(IDB_STORE)) {
-          db.createObjectStore(IDB_STORE);
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
-    } catch {
-      resolve(null);
-    }
-  });
-}
-
-function idbGet<T>(key: string): Promise<T | null> {
-  return openIDB().then((db) => {
-    if (!db) return null;
-    return new Promise<T | null>((resolve) => {
-      try {
-        const tx = db.transaction(IDB_STORE, "readonly");
-        const store = tx.objectStore(IDB_STORE);
-        const req = store.get(key);
-        req.onsuccess = () => resolve(req.result as T || null);
-        req.onerror = () => resolve(null);
-      } catch {
-        resolve(null);
-      }
-    });
-  });
-}
-
-function idbSet<T>(key: string, value: T): void {
-  openIDB().then((db) => {
-    if (!db) return;
-    try {
-      const tx = db.transaction(IDB_STORE, "readwrite");
-      const store = tx.objectStore(IDB_STORE);
-      store.put(value, key);
-    } catch (e) {
-      console.warn("IDB write error:", e);
-    }
-  });
-}
-
-// In-Memory Synchronous Caches for Instant UI Response & Zero Quota Failure
-let inMemoryUsers: User[] | null = null;
-let inMemoryPPDB: PPDBSubmission[] | null = null;
-let inMemorySPP: SPPPayment[] | null = null;
-
-// Asynchronous hydrate from IndexedDB on startup (non-disruptive)
-if (typeof window !== "undefined") {
-  setTimeout(() => {
-    try {
-      idbGet<User[]>(DB_USERS_KEY).then((users) => {
-        if (users && Array.isArray(users) && users.length > 0) {
-          inMemoryUsers = users;
-        }
-      });
-      idbGet<PPDBSubmission[]>(DB_PPDB_KEY).then((ppdb) => {
-        if (ppdb && Array.isArray(ppdb) && ppdb.length > 0) {
-          inMemoryPPDB = ppdb;
-        }
-      });
-      idbGet<SPPPayment[]>(DB_SPP_KEY).then((spp) => {
-        if (spp && Array.isArray(spp) && spp.length > 0) {
-          inMemorySPP = spp;
-        }
-      });
-    } catch {
-      // safe fallback
-    }
-  }, 1200);
-}
-
-function getStoredUsers(): User[] {
-  if (inMemoryUsers && inMemoryUsers.some((u) => u.role === "admin")) return inMemoryUsers;
-  if (typeof window === "undefined") return SEED_USERS;
-  const raw = localStorage.getItem(DB_USERS_KEY);
-  if (!raw) {
-    localStorage.setItem(DB_USERS_KEY, JSON.stringify(SEED_USERS));
-    inMemoryUsers = [...SEED_USERS];
-    idbSet(DB_USERS_KEY, inMemoryUsers);
-    return inMemoryUsers;
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    const users: User[] = Array.isArray(parsed) ? parsed : [...SEED_USERS];
-    
-    // Ensure default admin always exists
-    if (!users.some((u) => u.email.toLowerCase() === "admin@zaidbintsabit.sch.id" || u.role === "admin")) {
-      users.unshift(SEED_USERS[0]);
-      localStorage.setItem(DB_USERS_KEY, JSON.stringify(users));
-      idbSet(DB_USERS_KEY, users);
-    }
-    
-    inMemoryUsers = users;
-    return inMemoryUsers;
-  } catch {
-    inMemoryUsers = [...SEED_USERS];
-    return inMemoryUsers;
-  }
-}
-
-let inMemorySession: UserSession | null = null;
-
-export function tryEmergencyStorageCleanup(): void {
-  if (typeof window === "undefined") return;
-  try {
-    // 1. Remove all temporary draft form keys
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const k = localStorage.key(i);
-      if (k && (k.startsWith("spmb_draft_") || k.startsWith("ppdb-draft") || k.includes("draft"))) {
-        localStorage.removeItem(k);
-      }
-    }
-
-    // 2. Prune large base64 image strings from localStorage PPDB & SPP
-    // (Full images are already safely saved in IndexedDB and in-memory cache)
-    const rawPPDB = localStorage.getItem(DB_PPDB_KEY);
-    if (rawPPDB) {
-      try {
-        const parsed: PPDBSubmission[] = JSON.parse(rawPPDB);
-        const slim = parsed.map((item) => ({
-          ...item,
-          buktiRegUrl: item.buktiRegUrl && item.buktiRegUrl.length > 200 ? "" : item.buktiRegUrl,
-          dokumenFiles: item.dokumenFiles ? item.dokumenFiles.map((d) => ({ ...d, url: d.url && d.url.length > 200 ? "" : d.url })) : [],
-        }));
-        localStorage.setItem(DB_PPDB_KEY, JSON.stringify(slim));
-      } catch {}
-    }
-
-    const rawSPP = localStorage.getItem(DB_SPP_KEY);
-    if (rawSPP) {
-      try {
-        const parsed: SPPPayment[] = JSON.parse(rawSPP);
-        const slim = parsed.map((item) => ({
-          ...item,
-          buktiTransferUrl: item.buktiTransferUrl && item.buktiTransferUrl.length > 200 ? undefined : item.buktiTransferUrl,
-        }));
-        localStorage.setItem(DB_SPP_KEY, JSON.stringify(slim));
-      } catch {}
-    }
-  } catch (err) {
-    console.warn("Storage cleanup warning:", err);
-  }
-}
-
-function safeSetItem(key: string, value: string): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    localStorage.setItem(key, value);
-    return true;
-  } catch {
-    tryEmergencyStorageCleanup();
-    try {
-      localStorage.setItem(key, value);
-      return true;
-    } catch {
-      try {
-        sessionStorage.setItem(key, value);
-      } catch {}
-      return false;
-    }
-  }
-}
-
-function saveSession(session: UserSession | null): void {
-  inMemorySession = session;
-  if (typeof window === "undefined") return;
-  if (!session) {
-    try {
-      localStorage.removeItem(DB_SESSION_KEY);
-      sessionStorage.removeItem(DB_SESSION_KEY);
-    } catch {}
-    notifyChange();
-    return;
-  }
-
-  const serialized = JSON.stringify(session);
-  try {
-    sessionStorage.setItem(DB_SESSION_KEY, serialized);
-  } catch {}
-
-  const ok = safeSetItem(DB_SESSION_KEY, serialized);
-  if (!ok) {
-    tryEmergencyStorageCleanup();
-    try {
-      localStorage.setItem(DB_SESSION_KEY, serialized);
-    } catch {}
-  }
-  notifyChange();
-}
-
-function saveStoredUsers(users: User[]) {
-  inMemoryUsers = users;
-  idbSet(DB_USERS_KEY, users);
-  if (typeof window !== "undefined") {
-    safeSetItem(DB_USERS_KEY, JSON.stringify(users));
-    notifyChange();
-  }
-}
-
-function getStoredPPDB(): PPDBSubmission[] {
-  if (inMemoryPPDB) return inMemoryPPDB;
-  if (typeof window === "undefined") return SEED_PPDB;
-  const raw = localStorage.getItem(DB_PPDB_KEY);
-  if (!raw) {
-    safeSetItem(DB_PPDB_KEY, JSON.stringify(SEED_PPDB));
-    inMemoryPPDB = [...SEED_PPDB];
-    idbSet(DB_PPDB_KEY, inMemoryPPDB);
-    return inMemoryPPDB;
-  }
-  try {
-    inMemoryPPDB = JSON.parse(raw);
-    return inMemoryPPDB || SEED_PPDB;
-  } catch {
-    inMemoryPPDB = [...SEED_PPDB];
-    return inMemoryPPDB;
-  }
-}
-
-let ppdbSaveTimeout: any = null;
-
-function saveStoredPPDB(list: PPDBSubmission[]) {
-  inMemoryPPDB = list;
-  if (typeof window === "undefined") return;
-
-  if (ppdbSaveTimeout) clearTimeout(ppdbSaveTimeout);
-  ppdbSaveTimeout = setTimeout(() => {
-    idbSet(DB_PPDB_KEY, list);
-    const success = safeSetItem(DB_PPDB_KEY, JSON.stringify(list));
-    if (!success) {
-      const pruned = list.map((item, idx) => {
-        if (idx > 4) {
-          return {
-            ...item,
-            buktiRegUrl: item.buktiRegUrl && item.buktiRegUrl.length > 300 ? "" : item.buktiRegUrl,
-            dokumenFiles: item.dokumenFiles ? item.dokumenFiles.map((d) => ({ ...d, url: d.url.length > 300 ? "" : d.url })) : [],
-          };
-        }
-        return item;
-      });
-      safeSetItem(DB_PPDB_KEY, JSON.stringify(pruned));
-    }
-  }, 100);
-}
-
-/**
- * Automatically bind any guest or previously unlinked submissions to the user.
- */
-export function claimGuestSubmissions(userId: string, userEmail: string, userName?: string): void {
-  if (!userId || !userEmail) return;
-  const list = getStoredPPDB();
-  const normalizedEmail = userEmail.trim().toLowerCase();
-  const normalizedName = userName ? userName.trim().toLowerCase() : "";
-  let updated = false;
-
-  const modifiedList = list.map((item) => {
-    const itemEmail = (item.userEmail || item.email || "").trim().toLowerCase();
-    const itemWali = (item.wali || "").trim().toLowerCase();
-    const isGuest = item.userId.startsWith("usr-guest") || !item.userId;
-
-    if (isGuest && (itemEmail === normalizedEmail || (normalizedName && itemWali === normalizedName))) {
-      updated = true;
-      return { ...item, userId, userEmail: normalizedEmail };
-    }
-    return item;
-  });
-
-  if (updated) {
-    saveStoredPPDB(modifiedList);
-  }
-}
-
-/**
- * Ensures a user account exists for a parent when they submit SPMB form.
- */
-export function ensureUserAccountForPPDB(name: string, email: string, phone?: string): UserSession {
-  const users = getStoredUsers();
-  const safeName = name ? name.trim() : "Orang Tua";
-  const normalizedEmail = email ? email.trim().toLowerCase() : `${phone || Date.now()}@parent.pkbm`;
-
-  let user = users.find((u) => u.email.toLowerCase() === normalizedEmail);
-  if (!user) {
-    user = {
-      id: `usr-${Date.now()}`,
-      name: safeName,
-      email: normalizedEmail,
-      passwordHash: "123456",
-      role: "orangtua",
-      createdAt: new Date().toISOString(),
-    };
-    users.push(user);
-    saveStoredUsers(users);
-  }
-
-  const session: UserSession = {
-    userId: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    token: `token-${Date.now()}-${Math.random().toString(36).substring(2)}`,
-  };
-
-  saveSession(session);
-  claimGuestSubmissions(user.id, user.email, user.name);
-  claimGuestSPPPayments(user.id, user.email);
-  return session;
-}
-
-// User & Authentication Functions
-export function registerUser(name: string, email: string, password: string, role: UserRole = "orangtua"): { success: boolean; error?: string; user?: User; session?: UserSession } {
-  const users = getStoredUsers();
-  const normalizedEmail = email.trim().toLowerCase();
-
-  if (users.some((u) => u.email.toLowerCase() === normalizedEmail)) {
-    return { success: false, error: "Email sudah terdaftar. Silakan gunakan email lain atau masuk." };
-  }
-
-  const newUser: User = {
-    id: `usr-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    name: name.trim(),
-    email: normalizedEmail,
-    passwordHash: password,
-    role,
-    createdAt: new Date().toISOString(),
-  };
-
-  users.push(newUser);
-  saveStoredUsers(users);
-
-  const session: UserSession = {
-    userId: newUser.id,
-    name: newUser.name,
-    email: newUser.email,
-    role: newUser.role,
-    token: `token-${Date.now()}-${Math.random().toString(36).substring(2)}`,
-  };
-
-  saveSession(session);
-  claimGuestSubmissions(newUser.id, newUser.email, newUser.name);
-  claimGuestSPPPayments(newUser.id, newUser.email);
-  return { success: true, user: newUser, session };
-}
-
-export function loginUser(email: string, password: string): { success: boolean; error?: string; session?: UserSession } {
-  const users = getStoredUsers();
-  const rawInput = (email || "").trim().toLowerCase();
-  const rawPass = (password || "").trim();
-
-  // Normalize possible admin email variations (any admin-like input)
-  let normalizedEmail = rawInput;
-  const isAdminInput =
-    rawInput === "admin" ||
-    rawInput.startsWith("admin@") ||
-    rawInput.includes("admin@zaidbintsabit") ||
-    rawInput === "admin@zaidbintsabit.sch.id" ||
-    rawInput === "admin@zaidbintsabit.sch" ||
-    rawInput === "admin@zaidbintsabit.com" ||
-    rawInput === "admin@zaidbintsabit.id" ||
-    rawInput.includes("admin");
-
-  if (isAdminInput) {
-    normalizedEmail = "admin@zaidbintsabit.sch.id";
-  }
-
-  let user = users.find((u) => u.email.toLowerCase() === normalizedEmail);
-
-  // If user typed admin and no exact match found, match with the first admin user or restore default admin
-  if (!user && isAdminInput) {
-    user = users.find((u) => u.role === "admin");
-    if (!user) {
-      user = {
-        id: "usr-admin-01",
-        name: "Administrator Utama",
-        email: "admin@zaidbintsabit.sch.id",
-        passwordHash: "admin123",
-        role: "admin",
-        createdAt: new Date().toISOString(),
-      };
-      users.unshift(user);
-      saveStoredUsers(users);
-    }
-  }
-
-  if (!user) {
-    return { success: false, error: "Email belum terdaftar. Silakan periksa kembali email Anda atau buat akun baru." };
-  }
-
-  const isAdmin =
-    user.role === "admin" ||
-    isAdminInput ||
-    user.email.toLowerCase() === "admin@zaidbintsabit.sch.id" ||
-    user.email.toLowerCase().startsWith("admin@");
-
-  const isPasswordMatch =
-    user.passwordHash === rawPass ||
-    (isAdmin &&
-      (rawPass.toLowerCase() === "admin123" ||
-        rawPass.toLowerCase() === "admin" ||
-        rawPass === "123456" ||
-        rawPass.toLowerCase() === "zaid123" ||
-        rawPass.toLowerCase() === "zaidbintsabit" ||
-        rawPass.toLowerCase() === (user.passwordHash || "").toLowerCase()));
-
-  if (!isPasswordMatch) {
-    return { success: false, error: "Kata sandi tidak sesuai. Silakan periksa kembali kata sandi Anda." };
-  }
-
-  const resolvedRole: UserRole = isAdmin ? "admin" : user.role;
-
-  // Ensure user has correct role in storage
-  if (user.role !== resolvedRole) {
-    user.role = resolvedRole;
-    saveStoredUsers(users);
-  }
-
-  const session: UserSession = {
-    userId: user.id,
-    name: user.name || (isAdmin ? "Administrator Utama" : "Pengguna"),
-    email: user.email || (isAdmin ? "admin@zaidbintsabit.sch.id" : normalizedEmail),
-    role: resolvedRole,
-    token: `token-${Date.now()}-${Math.random().toString(36).substring(2)}`,
-  };
-
-  saveSession(session);
-  claimGuestSubmissions(user.id, user.email, user.name);
-  claimGuestSPPPayments(user.id, user.email);
-  return { success: true, session };
-}
-
-export function getCurrentSession(): UserSession | null {
-  if (inMemorySession) return inMemorySession;
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(DB_SESSION_KEY) || sessionStorage.getItem(DB_SESSION_KEY);
-    if (!raw) return null;
-    inMemorySession = JSON.parse(raw);
-    return inMemorySession;
-  } catch {
-    return inMemorySession || null;
-  }
-}
-
-export function logoutUser(): void {
-  saveSession(null);
-}
-
-export function getAllUsers(): User[] {
-  return getStoredUsers();
-}
-
-export function deleteUserAccount(userId: string): boolean {
-  const users = getStoredUsers();
-  const filtered = users.filter((u) => u.id !== userId);
-  if (filtered.length !== users.length) {
-    saveStoredUsers(filtered);
-    return true;
-  }
-  return false;
-}
-
-export function resetUserPassword(userId: string, newPass: string): boolean {
-  const users = getStoredUsers();
-  const user = users.find((u) => u.id === userId);
-  if (user) {
-    user.passwordHash = newPass;
-    saveStoredUsers(users);
-    return true;
-  }
-  return false;
-}
-
-export function updateUserBilling(userId: string, billing: UserBillingInfo): boolean {
-  const users = getStoredUsers();
-  const user = users.find((u) => u.id === userId);
-  if (!user) return false;
-  user.billing = {
-    ...billing,
-    updatedAt: new Date().toISOString(),
-  };
-  saveStoredUsers(users);
-  return true;
-}
-
-export function getUserBilling(userId: string): UserBillingInfo | null {
-  const users = getStoredUsers();
-  const user = users.find((u) => u.id === userId);
-  return user?.billing || null;
-}
-
-export function getUserBillingByEmail(email: string): UserBillingInfo | null {
-  const users = getStoredUsers();
-  const normalized = (email || "").trim().toLowerCase();
-  const user = users.find((u) => u.email.toLowerCase() === normalized);
-  return user?.billing || null;
-}
-
-export function validateOrCancelUserBilling(userId: string): boolean {
-  const users = getStoredUsers();
-  const user = users.find((u) => u.id === userId);
-  if (!user || !user.billing) return false;
-  user.billing = {
-    ...user.billing,
-    isActive: false,
-    isValidated: true,
-    validatedAt: new Date().toISOString(),
-    items: user.billing.items.map((item) => ({ ...item, status: "Lunas" })),
-    updatedAt: new Date().toISOString(),
-  };
-  saveStoredUsers(users);
-  return true;
-}
-
-// PPDB Data Functions
-export function getPPDBSubmissions(): PPDBSubmission[] {
-  return getStoredPPDB();
-}
-
-export function getPPDBSubmissionsByUser(userId: string, userEmail: string, userName?: string): PPDBSubmission[] {
-  const list = getStoredPPDB();
-  const safeUserId = userId ? String(userId).trim() : "";
-  const safeEmail = userEmail ? String(userEmail).trim().toLowerCase() : "";
-  const safeName = userName ? String(userName).trim().toLowerCase() : "";
-
-  if (!safeUserId && !safeEmail && !safeName) {
-    return [];
-  }
-
-  const filtered = list.filter((item) => {
-    if (!item) return false;
-    const itemUserId = item.userId ? String(item.userId).trim() : "";
-    const itemUserEmail = item.userEmail ? String(item.userEmail).trim().toLowerCase() : "";
-    const itemEmail = item.email ? String(item.email).trim().toLowerCase() : "";
-    const itemWali = item.wali ? String(item.wali).trim().toLowerCase() : "";
-
-    // 1. Direct match dengan userId akun login
-    if (safeUserId && itemUserId && itemUserId === safeUserId) return true;
-
-    // 2. Exact match dengan email akun atau email formulir
-    if (safeEmail && (itemUserEmail === safeEmail || itemEmail === safeEmail)) return true;
-
-    // 3. Exact match dengan nama wali akun
-    if (safeName && itemWali && itemWali === safeName) return true;
-
-    return false;
-  });
-
-  // HANYA kembalikan data milik user yang sedang login (TIDAK PERNAH menampilkan data orang lain)
-  return filtered;
-}
-
-export function savePPDBSubmission(data: Omit<PPDBSubmission, "id" | "regNo" | "createdAt" | "updatedAt">): PPDBSubmission {
- const list = getStoredPPDB();
- const regNo = `ZBT-2026-${Math.floor(1000 + Math.random() * 8999)}`;
- const now = new Date().toISOString();
-
- const newSubmission: PPDBSubmission = {
- ...data,
- id: `ppdb-${Date.now()}`,
- regNo,
- createdAt: now,
- updatedAt: now,
- };
-
- list.unshift(newSubmission);
- saveStoredPPDB(list);
- return newSubmission;
-}
-
-export function updatePPDBStatus(
- id: string,
- updates: {
- statusPendaftaran?: StatusPendaftaran;
- statusPembayaran?: StatusPembayaran;
- jadwalTes?: JadwalTes;
- }
-): boolean {
- const list = getStoredPPDB();
- const item = list.find((s) => s.id === id);
- if (!item) return false;
-
- if (updates.statusPendaftaran) item.statusPendaftaran = updates.statusPendaftaran;
- if (updates.statusPembayaran) item.statusPembayaran = updates.statusPembayaran;
- if (updates.jadwalTes) item.jadwalTes = updates.jadwalTes;
- item.updatedAt = new Date().toISOString();
-
- saveStoredPPDB(list);
- return true;
-}
-
-export function deletePPDBSubmission(id: string): boolean {
- const list = getStoredPPDB();
- const filtered = list.filter((item) => item.id !== id);
- if (filtered.length !== list.length) {
- saveStoredPPDB(filtered);
- return true;
- }
- return false;
-}
-
-// ==========================================
-// SPP PAYMENT DATA & FUNCTIONS
-// ==========================================
 
 export type StatusPembayaranSPP = "Menunggu Verifikasi" | "Lunas" | "Ditolak";
 
@@ -953,351 +150,1093 @@ export type KategoriPembayaran =
   | "Lain-lain";
 
 export interface SPPPayment {
- id: string;
- idTransaksi: string;
- nis: string;
- namaSiswa: string;
- jenjang: string;
- kategoriPembayaran?: KategoriPembayaran | string;
- bulanTagihan: string[];
- jumlahNominal: number;
- metodePembayaran: string;
- namaPengirim: string;
- buktiTransferUrl?: string | undefined;
- catatan?: string | undefined;
- status: StatusPembayaranSPP;
- userId?: string | undefined;
- userEmail?: string | undefined;
- deletedAt?: string | undefined;
- infaqNominal?: number | undefined;
- createdAt: string;
- updatedAt: string;
+  id: string;
+  idTransaksi: string;
+  nis: string;
+  namaSiswa: string;
+  jenjang: string;
+  kategoriPembayaran?: KategoriPembayaran | string;
+  bulanTagihan: string[];
+  jumlahNominal: number;
+  metodePembayaran: string;
+  namaPengirim: string;
+  buktiTransferUrl?: string | undefined;
+  catatan?: string | undefined;
+  status: StatusPembayaranSPP;
+  userId?: string | undefined;
+  userEmail?: string | undefined;
+  deletedAt?: string | undefined;
+  infaqNominal?: number | undefined;
+  createdAt: string;
+  updatedAt: string;
 }
 
-const DB_SPP_KEY = "pkbm_db_spp_v2";
+// =================================================================
+// EVENT BUS — refresh instan di dalam tab setelah tiap tulis.
+// (Realtime lintas-tab/device ditangani supabase channel di subscribeToDB.)
+// =================================================================
 
-const SEED_SPP: SPPPayment[] = [
- {
- id: "spp-001",
- idTransaksi: "SPP-202608-01",
- nis: "20261001",
- namaSiswa: "Ahmad Fauzi",
- jenjang: "SD",
- kategoriPembayaran: "SPP Bulanan",
- bulanTagihan: ["Agustus"],
- jumlahNominal: 750000,
- infaqNominal: 50000,
- metodePembayaran: "Transfer BSI",
- namaPengirim: "Rahmat Hidayat",
- status: "Lunas",
- userId: "usr-01",
- userEmail: "fauzi.parent@gmail.com",
- createdAt: "2026-08-01T08:30:00Z",
- updatedAt: "2026-08-01T09:00:00Z",
- },
- {
- id: "spp-002",
- idTransaksi: "SPP-202608-02",
- nis: "20261002",
- namaSiswa: "Siti Maryam",
- jenjang: "SMP Jalur 1",
- kategoriPembayaran: "Uang Pangkal / Gedung",
- bulanTagihan: ["Daftar Ulang"],
- jumlahNominal: 3500000,
- metodePembayaran: "Transfer BSI",
- namaPengirim: "Ibrahim",
- status: "Lunas",
- userId: "usr-02",
- userEmail: "maryam.parent@gmail.com",
- createdAt: "2026-08-05T10:15:00Z",
- updatedAt: "2026-08-05T11:00:00Z",
- },
- {
- id: "spp-003",
- idTransaksi: "SPP-202608-03",
- nis: "20261003",
- namaSiswa: "Muhammad Zaky",
- jenjang: "SMA Jalur 2",
- kategoriPembayaran: "SPP Bulanan",
- bulanTagihan: ["Agustus", "September"],
- jumlahNominal: 2300000,
- metodePembayaran: "Virtual Account BSI",
- namaPengirim: "Zulkifli (Ayah Zaky)",
- status: "Menunggu Verifikasi",
- userId: "usr-03",
- userEmail: "zaky.parent@gmail.com",
- createdAt: "2026-08-10T14:15:00Z",
- updatedAt: "2026-08-10T14:15:00Z",
- },
- {
- id: "spp-004",
- idTransaksi: "SPP-202608-04",
- nis: "20261004",
- namaSiswa: "Aisyah Humaira",
- jenjang: "TK",
- kategoriPembayaran: "Seragam & Atribut",
- bulanTagihan: ["Paket Seragam"],
- jumlahNominal: 1200000,
- metodePembayaran: "QRIS / E-Wallet",
- namaPengirim: "Kurniawan",
- status: "Lunas",
- createdAt: "2026-08-08T09:20:00Z",
- updatedAt: "2026-08-08T09:45:00Z",
- },
- {
- id: "spp-005",
- idTransaksi: "SPP-202608-05",
- nis: "20261005",
- namaSiswa: "Yusuf Al-Fatih",
- jenjang: "SD",
- kategoriPembayaran: "Buku Paket & Kitab",
- bulanTagihan: ["Tahun Ajaran 2026/2027"],
- jumlahNominal: 650000,
- metodePembayaran: "Transfer BSI",
- namaPengirim: "Herman Pratama",
- status: "Lunas",
- createdAt: "2026-08-09T11:00:00Z",
- updatedAt: "2026-08-09T11:30:00Z",
- },
- {
- id: "spp-006",
- idTransaksi: "SPP-202608-06",
- nis: "20261006",
- namaSiswa: "Annisa Rahma",
- jenjang: "SMP Jalur 2",
- kategoriPembayaran: "Katering Siswa Siswi",
- bulanTagihan: ["Agustus"],
- jumlahNominal: 500000,
- metodePembayaran: "Transfer BSI",
- namaPengirim: "Dewi Lestari",
- status: "Menunggu Verifikasi",
- createdAt: "2026-08-11T16:00:00Z",
- updatedAt: "2026-08-11T16:00:00Z",
- },
- {
- id: "spp-007",
- idTransaksi: "SPP-202608-07",
- nis: "20261007",
- namaSiswa: "Abdullah Syakur",
- jenjang: "SMA Jalur 1",
- kategoriPembayaran: "Infaq & Wakaf",
- bulanTagihan: ["Pembangunan Tahfizh"],
- jumlahNominal: 1000000,
- infaqNominal: 1000000,
- metodePembayaran: "Transfer BSI",
- namaPengirim: "H. Syakur",
- status: "Lunas",
- createdAt: "2026-08-03T13:10:00Z",
- updatedAt: "2026-08-03T13:30:00Z",
- },
-];
+const DB_CHANGE_EVENT = "pkbm_db_changed";
 
-function getStoredSPP(): SPPPayment[] {
-  if (inMemorySPP) return inMemorySPP;
-  if (typeof window === "undefined") return SEED_SPP;
-  const raw = localStorage.getItem(DB_SPP_KEY);
-  if (!raw) {
-    localStorage.setItem(DB_SPP_KEY, JSON.stringify(SEED_SPP));
-    inMemorySPP = [...SEED_SPP];
-    idbSet(DB_SPP_KEY, inMemorySPP);
-    return inMemorySPP;
-  }
-  try {
-    inMemorySPP = JSON.parse(raw);
-    return inMemorySPP || SEED_SPP;
-  } catch {
-    inMemorySPP = [...SEED_SPP];
-    return inMemorySPP;
+function notifyChange(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(DB_CHANGE_EVENT));
   }
 }
 
-let sppSaveTimeout: any = null;
+export function subscribeToDB(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
 
-function saveStoredSPP(data: SPPPayment[]) {
-  inMemorySPP = data;
+  window.addEventListener(DB_CHANGE_EVENT, callback);
+  window.addEventListener("storage", callback);
+
+  const { data: authSub } = supabase.auth.onAuthStateChange(() => callback());
+
+  const channel = supabase
+    .channel(`zbt-db-${Math.random().toString(36).slice(2)}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "ppdb_submissions" }, () => callback())
+    .on("postgres_changes", { event: "*", schema: "public", table: "spp_payments" }, () => callback())
+    .on("postgres_changes", { event: "*", schema: "public", table: "user_billings" }, () => callback())
+    .subscribe();
+
+  return () => {
+    window.removeEventListener(DB_CHANGE_EVENT, callback);
+    window.removeEventListener("storage", callback);
+    try {
+      authSub.subscription.unsubscribe();
+    } catch {
+      /* ignore */
+    }
+    try {
+      supabase.removeChannel(channel);
+    } catch {
+      /* ignore */
+    }
+  };
+}
+
+/** Legacy: bersihkan sisa data localStorage lama sekali. */
+export function tryEmergencyStorageCleanup(): void {
   if (typeof window === "undefined") return;
+  try {
+    ["pkbm_db_users_v1", "pkbm_db_ppdb_v1", "pkbm_db_spp_v2", "pkbm_db_session_v1"].forEach((k) =>
+      localStorage.removeItem(k)
+    );
+  } catch {
+    /* ignore */
+  }
+}
 
-  if (sppSaveTimeout) clearTimeout(sppSaveTimeout);
-  sppSaveTimeout = setTimeout(() => {
-    idbSet(DB_SPP_KEY, data);
-    const success = safeSetItem(DB_SPP_KEY, JSON.stringify(data));
-    if (!success) {
-      const pruned = data.map((item, idx) => {
-        if (idx > 4 && item.buktiTransferUrl && item.buktiTransferUrl.length > 500) {
-          return { ...item, buktiTransferUrl: undefined };
+// =================================================================
+// SESSION CACHE — getCurrentSession() tetap sinkron; cache di-refresh
+// oleh onAuthStateChange + getSession() awal.
+// =================================================================
+
+let cachedSession: UserSession | null = null;
+
+function mapSession(s: Session, parts: { name: string; role: UserRole }): UserSession {
+  return {
+    userId: s.user.id,
+    name: parts.name,
+    email: s.user.email ?? "",
+    role: parts.role,
+    token: s.access_token,
+  };
+}
+
+function metaName(s: Session): string {
+  const m = s.user.user_metadata as Record<string, unknown>;
+  const n = m?.["name"];
+  return typeof n === "string" && n.trim() ? n : s.user.email ?? "Pengguna";
+}
+
+/** Normalisasi nilai role apa pun jadi "admin" | "orangtua" (tahan spasi/kapital/enum). */
+function normalizeRole(raw: unknown): UserRole {
+  return String(raw ?? "").trim().toLowerCase() === "admin" ? "admin" : "orangtua";
+}
+
+/** Role dari JWT: cek user_metadata DAN app_metadata (tergantung cara akun dibuat). */
+function metaRole(s: Session): UserRole {
+  const um = (s.user.user_metadata ?? {}) as Record<string, unknown>;
+  const am = (s.user.app_metadata ?? {}) as Record<string, unknown>;
+  if (normalizeRole(um["role"]) === "admin") return "admin";
+  if (normalizeRole(am["role"]) === "admin") return "admin";
+  return "orangtua";
+}
+
+/**
+ * Sumber OTORITATIF untuk role & nama: tabel `profiles`.
+ * Return null kalau baris tidak ada / RLS memblokir SELECT — dengan log yang jelas
+ * supaya penyebabnya kelihatan (bukan diam-diam jadi 'orangtua').
+ */
+async function fetchProfile(userId: string): Promise<{ name: string; role: UserRole } | null> {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("name, role")
+      .eq("id", userId)
+      .maybeSingle();
+
+    console.log("[db] fetchProfile", { userId, data, error: error?.message ?? null });
+
+    if (error) {
+      console.error(
+        "[db] Gagal membaca tabel `profiles` (kemungkinan belum ada RLS policy SELECT untuk `authenticated`):",
+        error.message,
+        "→ create policy \"profiles self read\" on public.profiles for select to authenticated using (auth.uid() = id);"
+      );
+      return null;
+    }
+    if (!data) {
+      console.warn(
+        `[db] Baris \`profiles\` untuk user ${userId} tidak terbaca (0 baris). ` +
+          "Pastikan baris profiles ada DAN ada policy SELECT: " +
+          'create policy "profiles self read" on public.profiles for select to authenticated using (auth.uid() = id);'
+      );
+      return null;
+    }
+    const role = normalizeRole((data as Record<string, unknown>)["role"]);
+    console.log("[db] fetchProfile OK →", { rawRole: (data as Record<string, unknown>)["role"], role });
+    return {
+      name: ((data as Record<string, unknown>)["name"] as string) || "",
+      role,
+    };
+  } catch (e) {
+    console.error("[db] Exception saat membaca `profiles`:", e);
+    return null;
+  }
+}
+
+/**
+ * Refresh cache sesi dari state auth. SATU kali tulis + notify, SETELAH role
+ * otoritatif diketahui — tidak pernah menulis sesi "provisional" yang bisa
+ * menurunkan role admin ke orangtua di tengah proses.
+ */
+async function hydrateFromSupabase(supaSession: Session | null): Promise<void> {
+  if (!supaSession || !supaSession.user) {
+    cachedSession = null;
+    notifyChange();
+    return;
+  }
+
+  const uid = supaSession.user.id;
+  const prof = await fetchProfile(uid);
+
+  // Untuk user yang sama, jangan pernah menurunkan role/nama yang sudah diketahui
+  // benar hanya karena fetch profiles gagal sesaat.
+  const prev = cachedSession && cachedSession.userId === uid ? cachedSession : null;
+  const role: UserRole = prof?.role ?? prev?.role ?? metaRole(supaSession);
+  const name = prof?.name || prev?.name || metaName(supaSession);
+
+  cachedSession = mapSession(supaSession, { name, role });
+  console.log("[db] hydrateFromSupabase → cachedSession.role =", role, {
+    fromProfiles: prof?.role ?? null,
+    fromPrev: prev?.role ?? null,
+    fromMeta: metaRole(supaSession),
+  });
+  notifyChange();
+}
+
+if (typeof window !== "undefined") {
+  supabase.auth.getSession().then(({ data }) => hydrateFromSupabase(data.session));
+  supabase.auth.onAuthStateChange((_event, session) => {
+    hydrateFromSupabase(session);
+  });
+}
+
+export function getCurrentSession(): UserSession | null {
+  return cachedSession;
+}
+
+// =================================================================
+// HELPERS
+// =================================================================
+
+function translateAuthError(msg: string): string {
+  const m = (msg || "").toLowerCase();
+  if (m.includes("invalid login credentials")) return "Email atau kata sandi salah.";
+  if (m.includes("already registered") || m.includes("already been registered"))
+    return "Email sudah terdaftar. Silakan masuk atau gunakan email lain.";
+  if (m.includes("email not confirmed"))
+    return "Email belum dikonfirmasi. Nonaktifkan 'Confirm email' di Supabase Auth atau cek email Anda.";
+  if (m.includes("password should be at least")) return "Kata sandi minimal 6 karakter.";
+  if (m.includes("unable to validate email address") || m.includes("invalid email"))
+    return "Format email tidak valid.";
+  if (m.includes("signups not allowed")) return "Pendaftaran akun sedang dinonaktifkan di server.";
+  return msg || "Terjadi kesalahan autentikasi.";
+}
+
+function generatePassword(): string {
+  const rnd =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `Zbt-${rnd}-${Math.random().toString(36).slice(2, 8)}A1`;
+}
+
+function toIntOrNull(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+function orNull<T>(v: T | undefined | null | ""): T | null {
+  return v === undefined || v === null || v === "" ? null : v;
+}
+
+function normJenisKelamin(v: unknown): string | null {
+  if (typeof v !== "string" || !v.trim()) return null;
+  const s = v.trim().toLowerCase();
+  if (s.startsWith("l")) return "Laki-laki";
+  if (s.startsWith("p")) return "Perempuan";
+  return v.trim();
+}
+
+// =================================================================
+// MAPPERS
+// =================================================================
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+function rowToPPDB(r: any, urlMap: Record<string, string>): PPDBSubmission {
+  const docsRaw: any[] = Array.isArray(r.ppdb_documents) ? r.ppdb_documents : [];
+  const jadwalRaw = Array.isArray(r.ppdb_jadwal_tes) ? r.ppdb_jadwal_tes[0] : r.ppdb_jadwal_tes;
+
+  const dokumenFiles: UploadedDocFile[] = docsRaw
+    .filter((d) => d && d.file_url)
+    .map((d) => ({
+      id: String(d.id ?? d.file_url),
+      name: d.file_name ?? d.doc_type ?? "Dokumen",
+      size: d.file_size ?? undefined,
+      url: urlMap[d.file_url] ?? "",
+      path: d.file_url,
+    }));
+
+  const dokumen: string[] = docsRaw.map((d) => d.doc_type).filter((x: unknown): x is string => Boolean(x));
+
+  const out: Record<string, unknown> = {
+    id: String(r.id),
+    regNo: r.reg_no ?? "",
+    userId: r.user_id ?? "",
+    userEmail: r.email ?? "",
+    jenjang: r.jenjang ?? "",
+
+    nama: r.nama_lengkap ?? "",
+    namaPanggilan: r.nama_panggilan ?? undefined,
+    nikSiswa: r.nik_siswa ?? undefined,
+    noAkta: r.no_akta ?? undefined,
+    noKk: r.no_kk ?? undefined,
+    nisn: r.nisn ?? "",
+    tempatLahir: r.tempat_lahir ?? undefined,
+    lahir: r.tanggal_lahir ?? "",
+    jenisKelamin: r.jenis_kelamin ?? undefined,
+    agama: r.agama ?? undefined,
+    suku: r.suku ?? undefined,
+    statusAnak: r.status_anak ?? undefined,
+    anakKe: r.anak_ke !== null && r.anak_ke !== undefined ? String(r.anak_ke) : undefined,
+    transportasi: r.transportasi ?? undefined,
+    tinggiBadan: r.tinggi_badan !== null && r.tinggi_badan !== undefined ? String(r.tinggi_badan) : undefined,
+    beratBadan: r.berat_badan !== null && r.berat_badan !== undefined ? String(r.berat_badan) : undefined,
+    riwayatPenyakit: r.riwayat_penyakit ?? undefined,
+    asalSekolah: r.asal_sekolah ?? undefined,
+    npsnAsal: r.npsn_asal ?? undefined,
+    alamat: r.alamat ?? "",
+
+    namaAyah: r.nama_ayah ?? undefined,
+    nikAyah: r.nik_ayah ?? undefined,
+    tempatLahirAyah: r.tempat_lahir_ayah ?? undefined,
+    tanggalLahirAyah: r.tanggal_lahir_ayah ?? undefined,
+    pendidikanAyah: r.pendidikan_ayah ?? undefined,
+    pekerjaanAyah: r.pekerjaan_ayah ?? undefined,
+    penghasilanAyah: r.penghasilan_ayah ?? undefined,
+    teleponAyah: r.telepon_ayah ?? undefined,
+    kebutuhanKhususAyah: r.kebutuhan_khusus_ayah ?? undefined,
+
+    namaIbu: r.nama_ibu ?? undefined,
+    nikIbu: r.nik_ibu ?? undefined,
+    tempatLahirIbu: r.tempat_lahir_ibu ?? undefined,
+    tanggalLahirIbu: r.tanggal_lahir_ibu ?? undefined,
+    pendidikanIbu: r.pendidikan_ibu ?? undefined,
+    pekerjaanIbu: r.pekerjaan_ibu ?? undefined,
+    penghasilanIbu: r.penghasilan_ibu ?? undefined,
+    teleponIbu: r.telepon_ibu ?? undefined,
+
+    wali: r.wali ?? "",
+    telepon: r.telepon ?? "",
+    email: r.email ?? "",
+
+    dokumen,
+    dokumenFiles,
+    metode: r.metode_pembayaran ?? "",
+    buktiRegUrl: r.bukti_reg_url ? urlMap[r.bukti_reg_url] ?? "" : undefined,
+    catatanTambahan: r.catatan_tambahan ?? undefined,
+    statusPendaftaran: (r.status_pendaftaran ?? "Menunggu Verifikasi") as StatusPendaftaran,
+    statusPembayaran: (r.status_pembayaran ?? "Belum Bayar") as StatusPembayaran,
+    jadwalTes: jadwalRaw
+      ? {
+          tanggal: jadwalRaw.tanggal ?? "",
+          waktu: jadwalRaw.waktu ?? "",
+          ruang: jadwalRaw.ruang ?? "",
+          lokasi: jadwalRaw.lokasi ?? "",
         }
-        return item;
-      });
-      safeSetItem(DB_SPP_KEY, JSON.stringify(pruned));
-    }
-  }, 100);
-}
-
-export function claimGuestSPPPayments(userId: string, userEmail: string): void {
-  if (!userId || !userEmail) return;
-  const list = getStoredSPP();
-  const normalizedEmail = userEmail.trim().toLowerCase();
-  let updated = false;
-
-  const modifiedList = list.map((item) => {
-    const itemEmail = (item.userEmail || "").trim().toLowerCase();
-    const isGuest = !item.userId || item.userId.startsWith("usr-guest");
-
-    if (isGuest && itemEmail && itemEmail === normalizedEmail) {
-      updated = true;
-      return { ...item, userId, userEmail: normalizedEmail };
-    }
-    return item;
-  });
-
-  if (updated) {
-    saveStoredSPP(modifiedList);
-  }
-}
-
-export function getSPPPayments(): SPPPayment[] {
- return getStoredSPP();
-}
-
-export function getSPPPaymentsByNIS(nis: string): SPPPayment[] {
- const list = getStoredSPP();
- return list.filter((item) => item.nis.toLowerCase() === nis.toLowerCase());
-}
-
-export function getSPPPaymentsByUser(
-  userId: string,
-  userEmail: string,
-  userName?: string,
-  includeDeleted: boolean = true
-): SPPPayment[] {
-  const all = getStoredSPP();
-  const list = includeDeleted ? all : all.filter((p) => !p.deletedAt);
-  const safeUserId = userId ? String(userId).trim() : "";
-  const safeEmail = userEmail ? String(userEmail).trim().toLowerCase() : "";
-  const safeName = userName ? String(userName).trim().toLowerCase() : "";
-
-  if (!safeUserId && !safeEmail && !safeName) {
-    return [];
-  }
-
-  const filtered = list.filter((item) => {
-    if (!item) return false;
-    const itemUserId = item.userId ? String(item.userId).trim() : "";
-    const itemUserEmail = item.userEmail ? String(item.userEmail).trim().toLowerCase() : "";
-    const itemSender = item.namaPengirim ? String(item.namaPengirim).trim().toLowerCase() : "";
-
-    // 1. Direct match dengan userId akun login
-    if (safeUserId && itemUserId && itemUserId === safeUserId) return true;
-
-    // 2. Exact match dengan email akun login
-    if (safeEmail && itemUserEmail === safeEmail) return true;
-
-    // 3. Fallback jika transaksi belum ada userId/email tapi nama pengirim sama persis
-    if (!itemUserId && !itemUserEmail && safeName && itemSender && itemSender === safeName) return true;
-
-    return false;
-  });
-
-  // HANYA kembalikan transaksi milik user yang login (TIDAK PERNAH menampilkan transaksi user lain)
-  return filtered;
-}
-
-export function submitSPPPayment(
-  data: Omit<SPPPayment, "id" | "idTransaksi" | "status" | "createdAt" | "updatedAt">
-): SPPPayment {
-  const list = getStoredSPP();
-  const isInf = Boolean(
-    data.kategoriPembayaran &&
-    (data.kategoriPembayaran.includes("Infaq") ||
-     data.kategoriPembayaran.includes("Wakaf") ||
-     data.kategoriPembayaran.includes("Donasi"))
-  );
-  const prefix = isInf ? "INF" : "SPP";
-  const idTransaksi = `${prefix}-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}-${Math.floor(
-    100 + Math.random() * 899
-  )}`;
-  const now = new Date().toISOString();
-
-  const newPayment: SPPPayment = {
-    ...data,
-    id: `spp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    idTransaksi,
-    status: "Menunggu Verifikasi",
-    createdAt: now,
-    updatedAt: now,
+      : undefined,
+    createdAt: r.created_at ?? "",
+    updatedAt: r.updated_at ?? r.created_at ?? "",
   };
 
-  list.unshift(newPayment);
-  saveStoredSPP(list);
-  return newPayment;
+  return out as unknown as PPDBSubmission;
 }
 
-export function updateSPPPaymentStatus(id: string, status: StatusPembayaranSPP): boolean {
- const list = getStoredSPP();
- const item = list.find((s) => s.id === id);
- if (!item) return false;
+type PPDBInput = Omit<PPDBSubmission, "id" | "regNo" | "createdAt" | "updatedAt">;
 
- item.status = status;
- item.updatedAt = new Date().toISOString();
- saveStoredSPP(list);
- return true;
+function ppdbToRow(d: PPDBInput, regNo: string): Record<string, unknown> {
+  return {
+    reg_no: regNo,
+    user_id: orNull(d.userId),
+    jenjang: d.jenjang,
+
+    nama_lengkap: d.nama,
+    nama_panggilan: orNull(d.namaPanggilan),
+    nik_siswa: orNull(d.nikSiswa),
+    no_akta: orNull(d.noAkta),
+    no_kk: orNull(d.noKk),
+    nisn: orNull(d.nisn),
+    tempat_lahir: orNull(d.tempatLahir),
+    tanggal_lahir: orNull(d.lahir),
+    jenis_kelamin: normJenisKelamin(d.jenisKelamin),
+    agama: d.agama || "Islam",
+    suku: orNull(d.suku),
+    status_anak: orNull(d.statusAnak),
+    anak_ke: toIntOrNull(d.anakKe),
+    transportasi: orNull(d.transportasi),
+    tinggi_badan: toIntOrNull(d.tinggiBadan),
+    berat_badan: toIntOrNull(d.beratBadan),
+    riwayat_penyakit: orNull(d.riwayatPenyakit),
+    asal_sekolah: orNull(d.asalSekolah),
+    npsn_asal: orNull(d.npsnAsal),
+    alamat: d.alamat,
+
+    nama_ayah: orNull(d.namaAyah),
+    nik_ayah: orNull(d.nikAyah),
+    tempat_lahir_ayah: orNull(d.tempatLahirAyah),
+    tanggal_lahir_ayah: orNull(d.tanggalLahirAyah),
+    pendidikan_ayah: orNull(d.pendidikanAyah),
+    pekerjaan_ayah: orNull(d.pekerjaanAyah),
+    penghasilan_ayah: orNull(d.penghasilanAyah),
+    telepon_ayah: orNull(d.teleponAyah),
+    kebutuhan_khusus_ayah: orNull(d.kebutuhanKhususAyah),
+
+    nama_ibu: orNull(d.namaIbu),
+    nik_ibu: orNull(d.nikIbu),
+    tempat_lahir_ibu: orNull(d.tempatLahirIbu),
+    tanggal_lahir_ibu: orNull(d.tanggalLahirIbu),
+    pendidikan_ibu: orNull(d.pendidikanIbu),
+    pekerjaan_ibu: orNull(d.pekerjaanIbu),
+    penghasilan_ibu: orNull(d.penghasilanIbu),
+    telepon_ibu: orNull(d.teleponIbu),
+
+    wali: orNull(d.wali),
+    telepon: d.telepon,
+    email: d.email,
+
+    metode_pembayaran: d.metode || "Transfer Bank BSI",
+    bukti_reg_url: orNull(d.buktiRegUrl),
+    catatan_tambahan: orNull(d.catatanTambahan),
+    status_pendaftaran: d.statusPendaftaran || "Menunggu Verifikasi",
+    status_pembayaran: d.statusPembayaran || "Belum Bayar",
+  };
 }
 
-export function trashSPPPayment(id: string): boolean {
- const list = getStoredSPP();
- const item = list.find((s) => s.id === id);
- if (!item) return false;
-
- item.deletedAt = new Date().toISOString();
- item.updatedAt = new Date().toISOString();
- saveStoredSPP(list);
- return true;
-}
-
-export function restoreSPPPayment(id: string): boolean {
- const list = getStoredSPP();
- const item = list.find((s) => s.id === id);
- if (!item) return false;
-
- item.deletedAt = undefined;
- item.updatedAt = new Date().toISOString();
- saveStoredSPP(list);
- return true;
-}
-
-export function restoreAllSPPPayments(): boolean {
- const list = getStoredSPP();
- let changed = false;
- list.forEach((item) => {
- if (item.deletedAt) {
- item.deletedAt = undefined;
- item.updatedAt = new Date().toISOString();
- changed = true;
- }
- });
- if (changed) saveStoredSPP(list);
- return changed;
-}
-
-export function deleteSPPPayment(id: string): boolean {
-  const list = getStoredSPP();
-  const filtered = list.filter((item) => item.id !== id);
-  if (filtered.length !== list.length) {
-    saveStoredSPP(filtered);
-    return true;
+function rowToSPP(r: any, urlMap: Record<string, string>): SPPPayment {
+  let bulan: string[] = [];
+  if (Array.isArray(r.bulan_tagihan)) bulan = r.bulan_tagihan.map((x: unknown) => String(x));
+  else if (typeof r.bulan_tagihan === "string") {
+    try {
+      const parsed = JSON.parse(r.bulan_tagihan);
+      if (Array.isArray(parsed)) bulan = parsed.map((x) => String(x));
+    } catch {
+      bulan = r.bulan_tagihan ? [r.bulan_tagihan] : [];
+    }
   }
-  return false;
+
+  const out: Record<string, unknown> = {
+    id: String(r.id),
+    idTransaksi: r.id_transaksi ?? "",
+    nis: r.nis ?? "",
+    namaSiswa: r.nama_siswa ?? "",
+    jenjang: r.jenjang ?? "",
+    kategoriPembayaran: r.kategori_pembayaran ?? "SPP Bulanan",
+    bulanTagihan: bulan,
+    jumlahNominal: Number(r.jumlah_nominal ?? 0),
+    metodePembayaran: r.metode_pembayaran ?? "",
+    namaPengirim: r.nama_pengirim ?? "",
+    buktiTransferUrl: r.bukti_transfer_url ? urlMap[r.bukti_transfer_url] ?? "" : undefined,
+    catatan: r.catatan ?? undefined,
+    status: (r.status ?? "Menunggu Verifikasi") as StatusPembayaranSPP,
+    userId: r.user_id ?? undefined,
+    userEmail: r.user_email ?? undefined,
+    deletedAt: r.deleted_at ?? undefined,
+    infaqNominal:
+      r.infaq_nominal !== null && r.infaq_nominal !== undefined ? Number(r.infaq_nominal) : undefined,
+    createdAt: r.created_at ?? "",
+    updatedAt: r.updated_at ?? r.created_at ?? "",
+  };
+  return out as unknown as SPPPayment;
 }
 
-export function deleteAllSPPPayments(): boolean {
-  saveStoredSPP([]);
+type SPPInput = Omit<SPPPayment, "id" | "idTransaksi" | "status" | "createdAt" | "updatedAt">;
+
+function sppToRow(d: SPPInput, idTransaksi: string): Record<string, unknown> {
+  return {
+    id_transaksi: idTransaksi,
+    nis: d.nis,
+    nama_siswa: d.namaSiswa,
+    jenjang: d.jenjang,
+    kategori_pembayaran: d.kategoriPembayaran || "SPP Bulanan",
+    bulan_tagihan: Array.isArray(d.bulanTagihan) ? d.bulanTagihan : [],
+    jumlah_nominal: d.jumlahNominal ?? 0,
+    infaq_nominal: d.infaqNominal ?? 0,
+    metode_pembayaran: d.metodePembayaran,
+    nama_pengirim: d.namaPengirim,
+    bukti_transfer_url: orNull(d.buktiTransferUrl),
+    catatan: orNull(d.catatan),
+    status: "Menunggu Verifikasi",
+    user_id: orNull(d.userId),
+    user_email: orNull(d.userEmail),
+  };
+}
+
+function rowToBilling(b: any, items: any[]): UserBillingInfo {
+  const out: Record<string, unknown> = {
+    isActive: Boolean(b.is_active),
+    penagihName: b.penagih_name ?? "",
+    penagihKontak: b.penagih_kontak ?? undefined,
+    teleponOrangTua: b.telepon_orang_tua ?? undefined,
+    pesanPenagih: b.pesan_penagih ?? "",
+    tanggalTagihan: b.tanggal_tagihan ?? undefined,
+    items: (items ?? []).map((it) => ({
+      id: String(it.id),
+      namaItem: it.nama_item ?? "",
+      nominal: Number(it.nominal ?? 0),
+      jatuhTempo: it.jatuh_tempo ?? undefined,
+      kategori: it.kategori ?? undefined,
+      status: it.status ?? undefined,
+    })),
+    rekeningTujuan: b.rekening_tujuan ?? undefined,
+    isValidated: b.is_validated ?? undefined,
+    validatedAt: b.validated_at ?? undefined,
+    updatedAt: b.updated_at ?? undefined,
+  };
+  return out as unknown as UserBillingInfo;
+}
+
+// =================================================================
+// GUEST CLAIM — sekarang no-op (guest selalu dibuatkan akun auth dulu).
+// =================================================================
+
+export async function claimGuestSubmissions(
+  _userId: string,
+  _userEmail: string,
+  _userName?: string
+): Promise<void> {
+  return;
+}
+
+export async function claimGuestSPPPayments(_userId: string, _userEmail: string): Promise<void> {
+  return;
+}
+
+// =================================================================
+// AUTH
+// =================================================================
+
+export async function ensureUserAccountForPPDB(
+  name: string,
+  email: string,
+  phone?: string
+): Promise<UserSession> {
+  const existing = getCurrentSession();
+  if (existing) return existing;
+
+  const safeName = (name || "").trim() || "Orang Tua";
+  const rawEmail = (email || "").trim().toLowerCase();
+  const password = generatePassword();
+
+  const firstEmail = rawEmail || `guest-${Date.now()}@zbt-guest.local`;
+  let res = await supabase.auth.signUp({
+    email: firstEmail,
+    password,
+    options: { data: { name: safeName } },
+  });
+
+  if (res.error) {
+    const retryEmail = `guest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@zbt-guest.local`;
+    res = await supabase.auth.signUp({
+      email: retryEmail,
+      password,
+      options: { data: { name: safeName } },
+    });
+    if (res.error) throw new Error(translateAuthError(res.error.message));
+  }
+
+  const user = res.data.user;
+  if (user) {
+    const { error: pErr } = await supabase.from("profiles").upsert(
+      { id: user.id, name: safeName, role: "orangtua", phone: phone || null, email: user.email ?? null },
+      { onConflict: "id" }
+    );
+    if (pErr) {
+      console.error(
+        "[db] Gagal upsert `profiles` untuk akun guest (cek RLS INSERT + trigger handle_new_user):",
+        pErr.message
+      );
+    }
+  }
+
+  if (!res.data.session) {
+    throw new Error(
+      "Akun dibuat tetapi sesi belum aktif. Nonaktifkan 'Confirm email' di Supabase Auth lalu coba lagi."
+    );
+  }
+
+  const session = mapSession(res.data.session, { name: safeName, role: "orangtua" });
+  cachedSession = session;
+  notifyChange();
+  return session;
+}
+
+export async function registerUser(
+  name: string,
+  email: string,
+  password: string,
+  role: UserRole = "orangtua"
+): Promise<{ success: boolean; error?: string; user?: User | undefined; session?: UserSession | undefined }> {
+  const safeName = (name || "").trim();
+  const normalizedEmail = (email || "").trim().toLowerCase();
+
+  const { data, error } = await supabase.auth.signUp({
+    email: normalizedEmail,
+    password,
+    options: { data: { name: safeName, role } },
+  });
+
+  if (error) return { success: false, error: translateAuthError(error.message) };
+
+  const user = data.user;
+  if (user) {
+    const { error: pErr } = await supabase
+      .from("profiles")
+      .upsert({ id: user.id, name: safeName, role, email: user.email ?? null }, { onConflict: "id" });
+    if (pErr) {
+      console.error(
+        "[db] Gagal upsert `profiles` saat registrasi (cek RLS INSERT pada profiles + trigger handle_new_user):",
+        pErr.message
+      );
+    }
+  }
+
+  let session: UserSession | undefined;
+  if (data.session) {
+    session = mapSession(data.session, { name: safeName, role });
+    cachedSession = session;
+    notifyChange();
+  }
+
+  const mappedUser: User | undefined = user
+    ? {
+        id: user.id,
+        name: safeName,
+        email: user.email ?? normalizedEmail,
+        passwordHash: "",
+        role,
+        createdAt: user.created_at ?? new Date().toISOString(),
+      }
+    : undefined;
+
+  return { success: true, user: mappedUser, session };
+}
+
+export async function loginUser(
+  email: string,
+  password: string
+): Promise<{ success: boolean; error?: string; session?: UserSession }> {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: (email || "").trim().toLowerCase(),
+    password: password || "",
+  });
+
+  if (error || !data.session) {
+    return { success: false, error: translateAuthError(error?.message ?? "Gagal masuk.") };
+  }
+
+  // Ambil role OTORITATIF dari `profiles` DAN tunggu selesai sebelum return,
+  // supaya keputusan redirect di UI langsung memakai role yang benar.
+  const prof = await fetchProfile(data.session.user.id);
+  const role: UserRole = prof?.role ?? metaRole(data.session);
+  const name = prof?.name || metaName(data.session);
+
+  const session = mapSession(data.session, { name, role });
+  cachedSession = session;
+  console.log("[db] loginUser RETURN → role =", role, {
+    userId: session.userId,
+    email: session.email,
+    fromProfiles: prof?.role ?? null,
+    fromMeta: metaRole(data.session),
+    user_metadata: data.session.user.user_metadata,
+    app_metadata: data.session.user.app_metadata,
+  });
+  notifyChange();
+  return { success: true, session };
+}
+
+export async function logoutUser(): Promise<void> {
+  await supabase.auth.signOut();
+  cachedSession = null;
+  notifyChange();
+}
+
+export async function getAllUsers(): Promise<User[]> {
+  const { data, error } = await supabase.from("profiles").select("*");
+  if (error) {
+    console.error("[db] getAllUsers gagal baca `profiles` (cek RLS SELECT admin / is_admin()):", error.message);
+    return [];
+  }
+  if (!data) return [];
+  return data.map((p: any) => ({
+    id: String(p.id),
+    name: p.name ?? "",
+    email: p.email ?? "", // kolom denormalisasi di profiles (diisi trigger handle_new_user)
+    passwordHash: "",
+    role: normalizeRole(p.role),
+    createdAt: p.created_at ?? "",
+  }));
+}
+
+/**
+ * Promote user yang SUDAH terdaftar jadi admin (ubah kolom `profiles.role`).
+ * Bisa jalan penuh dari app: RLS policy "profiles admin update" mengizinkan
+ * admin yang login meng-UPDATE row profiles siapa pun. Beda dari "buat akun
+ * admin dari nol" yang tidak bisa (signUp menggeser sesi admin aktif).
+ */
+export async function promoteUserToAdmin(
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!userId) return { success: false, error: "User tidak valid." };
+  const { error } = await supabase.from("profiles").update({ role: "admin" }).eq("id", userId);
+  if (error) {
+    console.error("[db] promoteUserToAdmin gagal (cek RLS 'profiles admin update'):", error.message);
+    return { success: false, error: error.message };
+  }
+  notifyChange();
+  return { success: true };
+}
+
+export async function deleteUserAccount(_userId: string): Promise<boolean> {
+  throw new Error(
+    "Hapus akun pengguna harus dilakukan lewat dashboard Supabase (Authentication → Users)."
+  );
+}
+
+export async function resetUserPassword(_userId: string, _newPass: string): Promise<boolean> {
+  throw new Error(
+    "Reset kata sandi pengguna lain harus dilakukan lewat dashboard Supabase (Authentication → Users)."
+  );
+}
+
+// =================================================================
+// BILLING
+// =================================================================
+
+export async function updateUserBilling(userId: string, billing: UserBillingInfo): Promise<boolean> {
+  const now = new Date().toISOString();
+  const { data: billingRow, error } = await supabase
+    .from("user_billings")
+    .upsert(
+      {
+        user_id: userId,
+        is_active: billing.isActive,
+        penagih_name: billing.penagihName || "Unit Administrasi & Keuangan STPI",
+        penagih_kontak: orNull(billing.penagihKontak),
+        telepon_orang_tua: orNull(billing.teleponOrangTua),
+        pesan_penagih: billing.pesanPenagih || "",
+        tanggal_tagihan: orNull(billing.tanggalTagihan),
+        rekening_tujuan: orNull(billing.rekeningTujuan),
+        is_validated: billing.isValidated ?? false,
+        validated_at: orNull(billing.validatedAt),
+        updated_at: now,
+      },
+      { onConflict: "user_id" }
+    )
+    .select()
+    .single();
+
+  if (error || !billingRow) throw new Error(error?.message ?? "Gagal menyimpan tagihan.");
+
+  await supabase.from("user_billing_items").delete().eq("billing_id", billingRow.id);
+
+  const items = billing.items ?? [];
+  if (items.length > 0) {
+    const { error: itemErr } = await supabase.from("user_billing_items").insert(
+      items.map((it) => ({
+        billing_id: billingRow.id,
+        nama_item: it.namaItem,
+        nominal: it.nominal ?? 0,
+        jatuh_tempo: orNull(it.jatuhTempo),
+        kategori: orNull(it.kategori),
+        status: it.status ?? "Belum Lunas",
+      }))
+    );
+    if (itemErr) throw new Error(itemErr.message);
+  }
+
+  notifyChange();
   return true;
 }
 
-export function deleteBatchSPPPayments(ids: string[]): boolean {
-  const list = getStoredSPP();
-  const idSet = new Set(ids);
-  const filtered = list.filter((item) => !idSet.has(item.id));
-  saveStoredSPP(filtered);
+export async function getUserBilling(userId: string): Promise<UserBillingInfo | null> {
+  if (!userId) return null;
+  const { data: b, error } = await supabase
+    .from("user_billings")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || !b) return null;
+
+  const { data: items } = await supabase.from("user_billing_items").select("*").eq("billing_id", b.id);
+  return rowToBilling(b, items ?? []);
+}
+
+/** Ambil semua tagihan user sekaligus (dipakai panel admin, hindari await di render). */
+export async function getAllUserBillings(): Promise<Record<string, UserBillingInfo>> {
+  const { data: billings, error } = await supabase.from("user_billings").select("*");
+  if (error || !billings || billings.length === 0) return {};
+
+  const { data: items } = await supabase.from("user_billing_items").select("*");
+  const itemsByBilling = new Map<string, any[]>();
+  (items ?? []).forEach((it: any) => {
+    const arr = itemsByBilling.get(it.billing_id) ?? [];
+    arr.push(it);
+    itemsByBilling.set(it.billing_id, arr);
+  });
+
+  const out: Record<string, UserBillingInfo> = {};
+  billings.forEach((b: any) => {
+    if (b.user_id) out[String(b.user_id)] = rowToBilling(b, itemsByBilling.get(b.id) ?? []);
+  });
+  return out;
+}
+
+export async function getUserBillingByEmail(email: string): Promise<UserBillingInfo | null> {
+  const target = (email || "").trim().toLowerCase();
+  if (!target) return null;
+  if (cachedSession && cachedSession.email.toLowerCase() === target) {
+    return getUserBilling(cachedSession.userId);
+  }
+  // Anon key tidak bisa resolve email -> user_id lawan auth.users.
+  return null;
+}
+
+export async function validateOrCancelUserBilling(userId: string): Promise<boolean> {
+  const { data: b } = await supabase
+    .from("user_billings")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!b) return false;
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("user_billings")
+    .update({ is_active: false, is_validated: true, validated_at: now, updated_at: now })
+    .eq("id", b.id);
+  if (error) throw new Error(error.message);
+
+  await supabase.from("user_billing_items").update({ status: "Lunas" }).eq("billing_id", b.id);
+  notifyChange();
+  return true;
+}
+
+// =================================================================
+// PPDB
+// =================================================================
+
+const PPDB_SELECT = "*, ppdb_documents(*), ppdb_jadwal_tes(*)";
+
+async function signPPDBRows(rows: any[]): Promise<Record<string, string>> {
+  const paths: string[] = [];
+  rows.forEach((r) => {
+    if (r.bukti_reg_url) paths.push(r.bukti_reg_url);
+    (Array.isArray(r.ppdb_documents) ? r.ppdb_documents : []).forEach((d: any) => {
+      if (d && d.file_url) paths.push(d.file_url);
+    });
+  });
+  return signDocUrls(paths);
+}
+
+export async function getPPDBSubmissions(): Promise<PPDBSubmission[]> {
+  const { data, error } = await supabase
+    .from("ppdb_submissions")
+    .select(PPDB_SELECT)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  const urlMap = await signPPDBRows(data);
+  return data.map((r) => rowToPPDB(r, urlMap));
+}
+
+export async function getPPDBSubmissionsByUser(
+  userId: string,
+  userEmail: string,
+  _userName?: string
+): Promise<PPDBSubmission[]> {
+  const safeUserId = (userId || "").trim();
+  const safeEmail = (userEmail || "").trim().toLowerCase();
+  const filters: string[] = [];
+  if (safeUserId) filters.push(`user_id.eq.${safeUserId}`);
+  if (safeEmail) filters.push(`email.eq.${safeEmail}`);
+  if (filters.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("ppdb_submissions")
+    .select(PPDB_SELECT)
+    .or(filters.join(","))
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  const urlMap = await signPPDBRows(data);
+  return data.map((r) => rowToPPDB(r, urlMap));
+}
+
+export async function savePPDBSubmission(data: PPDBInput): Promise<PPDBSubmission> {
+  const regNo = `ZBT-2026-${Math.floor(1000 + Math.random() * 8999)}`;
+  const row = ppdbToRow(data, regNo);
+
+  const { data: inserted, error } = await supabase
+    .from("ppdb_submissions")
+    .insert(row)
+    .select()
+    .single();
+  if (error || !inserted) throw new Error(error?.message ?? "Gagal menyimpan pendaftaran.");
+
+  const files = data.dokumenFiles ?? [];
+  const fileKeys = files.map((f) => f.id).filter((x): x is string => Boolean(x));
+  const docRows: Record<string, unknown>[] = files.map((f) => ({
+    submission_id: inserted.id,
+    doc_type: f.id || f.name,
+    file_name: f.name,
+    file_size: orNull(f.size),
+    file_url: f.path ?? f.url ?? "",
+  }));
+  (data.dokumen ?? []).forEach((name) => {
+    const covered = fileKeys.some(
+      (k) => name === k || name.startsWith(`${k} `) || name.startsWith(`${k}-`)
+    );
+    if (!covered) {
+      docRows.push({
+        submission_id: inserted.id,
+        doc_type: name,
+        file_name: name,
+        file_size: null,
+        file_url: "",
+      });
+    }
+  });
+
+  let insertedDocs: any[] = [];
+  if (docRows.length > 0) {
+    const { data: dRows, error: docErr } = await supabase
+      .from("ppdb_documents")
+      .insert(docRows)
+      .select();
+    if (docErr) console.warn("Gagal menyimpan dokumen PPDB:", docErr.message);
+    else insertedDocs = dRows ?? [];
+  }
+
+  notifyChange();
+
+  const urlMap = await signDocUrls([
+    (row["bukti_reg_url"] as string | null) ?? "",
+    ...docRows.map((d) => (d["file_url"] as string) ?? ""),
+  ]);
+  return rowToPPDB({ ...inserted, ppdb_documents: insertedDocs, ppdb_jadwal_tes: [] }, urlMap);
+}
+
+export async function updatePPDBStatus(
+  id: string,
+  updates: {
+    statusPendaftaran?: StatusPendaftaran;
+    statusPembayaran?: StatusPembayaran;
+    jadwalTes?: JadwalTes;
+  }
+): Promise<boolean> {
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (updates.statusPendaftaran) patch["status_pendaftaran"] = updates.statusPendaftaran;
+  if (updates.statusPembayaran) patch["status_pembayaran"] = updates.statusPembayaran;
+
+  if (Object.keys(patch).length > 1) {
+    const { error } = await supabase.from("ppdb_submissions").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  if (updates.jadwalTes) {
+    const j = updates.jadwalTes;
+    const { error: jErr } = await supabase.from("ppdb_jadwal_tes").upsert(
+      {
+        submission_id: id,
+        tanggal: j.tanggal,
+        waktu: j.waktu,
+        ruang: j.ruang,
+        lokasi: j.lokasi,
+      },
+      { onConflict: "submission_id" }
+    );
+    if (jErr) throw new Error(jErr.message);
+  }
+
+  notifyChange();
+  return true;
+}
+
+export async function deletePPDBSubmission(id: string): Promise<boolean> {
+  const { error } = await supabase.from("ppdb_submissions").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  notifyChange();
+  return true;
+}
+
+// =================================================================
+// SPP
+// =================================================================
+
+async function signSPPRows(rows: any[]): Promise<Record<string, string>> {
+  return signDocUrls(rows.map((r) => r.bukti_transfer_url).filter(Boolean));
+}
+
+export async function getSPPPayments(): Promise<SPPPayment[]> {
+  const { data, error } = await supabase
+    .from("spp_payments")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  const urlMap = await signSPPRows(data);
+  return data.map((r) => rowToSPP(r, urlMap));
+}
+
+export async function getSPPPaymentsByNIS(nis: string): Promise<SPPPayment[]> {
+  const { data, error } = await supabase
+    .from("spp_payments")
+    .select("*")
+    .eq("nis", nis)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  const urlMap = await signSPPRows(data);
+  return data.map((r) => rowToSPP(r, urlMap));
+}
+
+export async function getSPPPaymentsByUser(
+  userId: string,
+  userEmail: string,
+  _userName?: string,
+  includeDeleted: boolean = true
+): Promise<SPPPayment[]> {
+  const safeUserId = (userId || "").trim();
+  const safeEmail = (userEmail || "").trim().toLowerCase();
+  const filters: string[] = [];
+  if (safeUserId) filters.push(`user_id.eq.${safeUserId}`);
+  if (safeEmail) filters.push(`user_email.eq.${safeEmail}`);
+  if (filters.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("spp_payments")
+    .select("*")
+    .or(filters.join(","))
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+
+  const rows = includeDeleted ? data : data.filter((r) => !r.deleted_at);
+  const urlMap = await signSPPRows(rows);
+  return rows.map((r) => rowToSPP(r, urlMap));
+}
+
+export async function submitSPPPayment(data: SPPInput): Promise<SPPPayment> {
+  const kat = String(data.kategoriPembayaran ?? "");
+  const isInf = kat.includes("Infaq") || kat.includes("Wakaf") || kat.includes("Donasi");
+  const prefix = isInf ? "INF" : "SPP";
+  const now = new Date();
+  const idTransaksi = `${prefix}-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}-${Math.floor(
+    100 + Math.random() * 899
+  )}`;
+
+  const row = sppToRow(data, idTransaksi);
+  const { data: inserted, error } = await supabase
+    .from("spp_payments")
+    .insert(row)
+    .select()
+    .single();
+  if (error || !inserted) throw new Error(error?.message ?? "Gagal menyimpan pembayaran.");
+
+  notifyChange();
+  const urlMap = await signDocUrls([inserted.bukti_transfer_url]);
+  return rowToSPP(inserted, urlMap);
+}
+
+export async function updateSPPPaymentStatus(id: string, status: StatusPembayaranSPP): Promise<boolean> {
+  const { error } = await supabase
+    .from("spp_payments")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  notifyChange();
+  return true;
+}
+
+export async function trashSPPPayment(id: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("spp_payments")
+    .update({ deleted_at: now, updated_at: now })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  notifyChange();
+  return true;
+}
+
+export async function restoreSPPPayment(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("spp_payments")
+    .update({ deleted_at: null, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  notifyChange();
+  return true;
+}
+
+export async function restoreAllSPPPayments(): Promise<boolean> {
+  const { error } = await supabase
+    .from("spp_payments")
+    .update({ deleted_at: null, updated_at: new Date().toISOString() })
+    .not("deleted_at", "is", null);
+  if (error) throw new Error(error.message);
+  notifyChange();
+  return true;
+}
+
+export async function deleteSPPPayment(id: string): Promise<boolean> {
+  const { error } = await supabase.from("spp_payments").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  notifyChange();
+  return true;
+}
+
+export async function deleteAllSPPPayments(): Promise<boolean> {
+  const { error } = await supabase.from("spp_payments").delete().not("id", "is", null);
+  if (error) throw new Error(error.message);
+  notifyChange();
+  return true;
+}
+
+export async function deleteBatchSPPPayments(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  const { error } = await supabase.from("spp_payments").delete().in("id", ids);
+  if (error) throw new Error(error.message);
+  notifyChange();
   return true;
 }

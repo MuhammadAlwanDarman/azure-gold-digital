@@ -62,8 +62,28 @@ import {
   trashSPPPayment,
   UserSession,
 } from "@/lib/db";
+import { uploadDocFile } from "@/lib/supabase";
 import { useLanguage } from "@/lib/LanguageContext";
 import { compressImageFile } from "@/lib/image-compression";
+
+const ALLOWED_UPLOAD_MIME = ["image/jpeg", "image/png", "application/pdf"];
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/** Kompres gambar jadi JPEG (hemat, patuh limit bucket); PDF diteruskan apa adanya. */
+async function toUploadFile(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  try {
+    const dataUrl = await compressImageFile(file, 1400, 0.8);
+    if (dataUrl.startsWith("data:image/jpeg")) {
+      const blob = await (await fetch(dataUrl)).blob();
+      const base = file.name.replace(/\.[^.]+$/, "") || "bukti";
+      return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
+    }
+  } catch {
+    /* fallback ke file asli */
+  }
+  return file;
+}
 
 export const Route = createFileRoute("/spp")({
  head: () => ({
@@ -325,6 +345,7 @@ function SPPPage() {
   const [namaPengirim, setNamaPengirim] = useState("");
   const [catatan, setCatatan] = useState("");
   const [buktiUrl, setBuktiUrl] = useState("");
+  const [buktiFile, setBuktiFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [successPayment, setSuccessPayment] = useState<SPPPayment | null>(null);
   const [zoomImg, setZoomImg] = useState<{ title: string; url: string } | null>(null);
@@ -348,15 +369,21 @@ function SPPPage() {
   const [historyList, setHistoryList] = useState<SPPPayment[]>([]);
   const [historyTab, setHistoryTab] = useState<"active" | "trash">("active");
 
-  const loadPayments = (currentSession: UserSession | null) => {
+  const loadPayments = async (currentSession: UserSession | null) => {
     if (!currentSession) {
       setHistoryList([]);
       return;
     }
-    if (currentSession.role === "admin") {
-      setHistoryList(getSPPPayments());
-    } else {
-      setHistoryList(getSPPPaymentsByUser(currentSession.userId, currentSession.email, currentSession.name, true));
+    try {
+      if (currentSession.role === "admin") {
+        setHistoryList(await getSPPPayments());
+      } else {
+        setHistoryList(
+          await getSPPPaymentsByUser(currentSession.userId, currentSession.email, currentSession.name, true)
+        );
+      }
+    } catch (err) {
+      console.error("Gagal memuat data pembayaran:", err);
     }
   };
 
@@ -390,25 +417,41 @@ function SPPPage() {
     }
   };
 
-  const handleTrashItem = (id: string) => {
-    trashSPPPayment(id);
-    loadPayments(getCurrentSession() || session);
+  const handleTrashItem = async (id: string) => {
+    try {
+      await trashSPPPayment(id);
+      await loadPayments(getCurrentSession() || session);
+    } catch (err) {
+      alert(t("Gagal memindahkan ke sampah: ", "Failed to move to trash: ") + (err as Error).message);
+    }
   };
 
-  const handleRestoreItem = (id: string) => {
-    restoreSPPPayment(id);
-    loadPayments(getCurrentSession() || session);
+  const handleRestoreItem = async (id: string) => {
+    try {
+      await restoreSPPPayment(id);
+      await loadPayments(getCurrentSession() || session);
+    } catch (err) {
+      alert(t("Gagal memulihkan data: ", "Failed to restore: ") + (err as Error).message);
+    }
   };
 
-  const handleRestoreAll = () => {
-    restoreAllSPPPayments();
-    loadPayments(getCurrentSession() || session);
+  const handleRestoreAll = async () => {
+    try {
+      await restoreAllSPPPayments();
+      await loadPayments(getCurrentSession() || session);
+    } catch (err) {
+      alert(t("Gagal memulihkan semua data: ", "Failed to restore all: ") + (err as Error).message);
+    }
   };
 
-  const handlePermanentDelete = (id: string) => {
+  const handlePermanentDelete = async (id: string) => {
     if (confirm(t("Apakah Anda yakin ingin menghapus permanen riwayat transaksi SPP ini?", "Are you sure you want to permanently delete this SPP transaction history?"))) {
-      deleteSPPPayment(id);
-      loadPayments(getCurrentSession() || session);
+      try {
+        await deleteSPPPayment(id);
+        await loadPayments(getCurrentSession() || session);
+      } catch (err) {
+        alert(t("Gagal menghapus data: ", "Failed to delete: ") + (err as Error).message);
+      }
     }
   };
 
@@ -436,19 +479,27 @@ function SPPPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!ALLOWED_UPLOAD_MIME.includes(file.type)) {
+      alert(t("Format berkas harus JPG, PNG, atau PDF.", "File must be JPG, PNG, or PDF."));
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      alert(t("Ukuran berkas maksimal 10 MB.", "Maximum file size is 10 MB."));
+      e.target.value = "";
+      return;
+    }
     try {
-      const compressed = await compressImageFile(file, 900, 0.75);
-      setBuktiUrl(compressed);
-    } catch {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setBuktiUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      const prepared = await toUploadFile(file);
+      setBuktiFile(prepared);
+      setBuktiUrl(URL.createObjectURL(prepared));
+    } catch (err) {
+      console.error("Gagal memproses berkas:", err);
+      alert(t("Gagal memproses berkas. Coba berkas lain.", "Failed to process file. Try another file."));
     }
   };
 
-  const handleSubmitPayment = (e: React.FormEvent) => {
+  const handleSubmitPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
 
@@ -467,69 +518,76 @@ function SPPPage() {
       return;
     }
 
-    if (!buktiUrl) {
+    if (!buktiFile && !buktiUrl) {
       alert(t("Mohon unggah / lampirkan Foto Bukti Transfer pembayaran terlebih dahulu (Wajib).", "Please upload / attach Transfer Receipt photo first (Required)."));
       return;
     }
 
     setSubmitting(true);
-    setTimeout(() => {
-      try {
-        const tagihanInfo = isSPP ? selectedBulan : [kategoriPembayaran];
-        const noteWithInfaq = infaqNominal > 0
-          ? [catatan.trim(), `(Termasuk Infaq: Rp ${infaqNominal.toLocaleString("id-ID")})`].filter(Boolean).join(" — ")
-          : catatan.trim() || undefined;
+    try {
+      const tagihanInfo = isSPP ? selectedBulan : [kategoriPembayaran];
+      const noteWithInfaq = infaqNominal > 0
+        ? [catatan.trim(), `(Termasuk Infaq: Rp ${infaqNominal.toLocaleString("id-ID")})`].filter(Boolean).join(" — ")
+        : catatan.trim() || undefined;
 
-        const payload: Omit<SPPPayment, "id" | "idTransaksi" | "status" | "createdAt" | "updatedAt"> = {
-          nis: kelas.trim(),
-          namaSiswa: namaSiswa.trim(),
-          jenjang,
-          kategoriPembayaran,
-          bulanTagihan: tagihanInfo,
-          jumlahNominal: totalPembayaran,
-          metodePembayaran: metode,
-          namaPengirim: namaPengirim.trim(),
-          buktiTransferUrl: buktiUrl,
-          catatan: noteWithInfaq,
-        };
-
-        const curSession = getCurrentSession() || session;
-        if (curSession?.userId) {
-          payload.userId = curSession.userId;
-          payload.userEmail = curSession.email;
-        } else {
-          const autoSession = ensureUserAccountForPPDB(
-            namaPengirim.trim() || namaSiswa.trim() || "Wali Murid",
-            `${kelas.trim() || Date.now()}@parent.pkbm`,
-            ""
-          );
-          payload.userId = autoSession.userId;
-          payload.userEmail = autoSession.email;
-        }
-
-        // HANYA SUBMIT SATU KALI (TIDAK ADA TRANSAKSI GANDA/DOUBLE)
-        const payment = submitSPPPayment(payload);
-
-        setSuccessPayment(payment);
-        loadPayments(curSession || session);
-        playPaymentSuccessSound();
-        firePaymentSuccessConfetti();
-
-        // Reset form fields
-        setNamaSiswa("");
-        setKelas("");
-        setNamaPengirim("");
-        setCatatan("");
-        setBuktiUrl("");
-        setInfaqNominal(0);
-        setCustomInfaq("");
-        setCustomNominal(0);
-      } catch (err) {
-        console.error("Payment submission error:", err);
-      } finally {
-        setSubmitting(false);
+      // 1. Pastikan ada sesi (guest → buat akun Supabase otomatis).
+      let curSession = getCurrentSession() || session;
+      if (!curSession?.userId) {
+        curSession = await ensureUserAccountForPPDB(
+          namaPengirim.trim() || namaSiswa.trim() || "Wali Murid",
+          `${kelas.trim() || Date.now()}@parent.pkbm`,
+          ""
+        );
       }
-    }, 400);
+
+      // 2. Upload bukti transfer ke Supabase Storage (bucket privat).
+      let buktiPath = "";
+      if (buktiFile) {
+        buktiPath = await uploadDocFile(buktiFile, curSession.userId);
+      }
+
+      const payload: Omit<SPPPayment, "id" | "idTransaksi" | "status" | "createdAt" | "updatedAt"> = {
+        nis: kelas.trim(),
+        namaSiswa: namaSiswa.trim(),
+        jenjang,
+        kategoriPembayaran,
+        bulanTagihan: tagihanInfo,
+        jumlahNominal: totalPembayaran,
+        metodePembayaran: metode,
+        namaPengirim: namaPengirim.trim(),
+        buktiTransferUrl: buktiPath || undefined,
+        catatan: noteWithInfaq,
+        userId: curSession.userId,
+        userEmail: curSession.email,
+      };
+
+      // HANYA SUBMIT SATU KALI (TIDAK ADA TRANSAKSI GANDA/DOUBLE)
+      const payment = await submitSPPPayment(payload);
+
+      setSuccessPayment(payment);
+      await loadPayments(getCurrentSession() || session);
+      playPaymentSuccessSound();
+      firePaymentSuccessConfetti();
+
+      // Reset form fields
+      setNamaSiswa("");
+      setKelas("");
+      setNamaPengirim("");
+      setCatatan("");
+      setBuktiUrl("");
+      setBuktiFile(null);
+      setInfaqNominal(0);
+      setCustomInfaq("");
+      setCustomNominal(0);
+    } catch (err) {
+      console.error("Payment submission error:", err);
+      alert(
+        (err as Error).message ||
+          t("Gagal mengirim pembayaran. Silakan coba lagi.", "Failed to submit payment. Please try again.")
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
  // Active payments filter
@@ -1147,7 +1205,7 @@ function SPPPage() {
  ? t("Ganti Foto Resi", "Change Receipt Photo")
  : t("Pilih Foto Resi Transfer (Wajib)", "Choose Receipt Photo (Required)")}
  </span>
- <input type="file" accept="image/*" onChange={handleFileUpload} required className="hidden" />
+ <input type="file" accept="image/jpeg,image/png,application/pdf" onChange={handleFileUpload} required className="hidden" />
  </label>
  {buktiUrl ? (
  <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">

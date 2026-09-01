@@ -25,8 +25,28 @@ import {
 import { JENJANG } from "@/lib/school-data";
 import { AuroraBackground, Magnetic, Particles, Reveal } from "@/components/site/effects";
 import { ensureUserAccountForPPDB, getCurrentSession, savePPDBSubmission, subscribeToDB, UploadedDocFile, UserSession } from "@/lib/db";
+import { uploadDocFile } from "@/lib/supabase";
 import { useLanguage } from "@/lib/LanguageContext";
 import { compressImageFile } from "@/lib/image-compression";
+
+const ALLOWED_UPLOAD_MIME = ["image/jpeg", "image/png", "application/pdf"];
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/** Kompres gambar jadi JPEG (hemat & patuh limit bucket); PDF diteruskan apa adanya. */
+async function prepareDocFile(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  try {
+    const dataUrl = await compressImageFile(file, 1400, 0.8);
+    if (dataUrl.startsWith("data:image/jpeg")) {
+      const blob = await (await fetch(dataUrl)).blob();
+      const base = file.name.replace(/\.[^.]+$/, "") || "dokumen";
+      return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
+    }
+  } catch {
+    /* fallback ke file asli */
+  }
+  return file;
+}
 
 export const Route = createFileRoute("/ppdb")({
  head: () => ({
@@ -180,6 +200,9 @@ function PpdbPage() {
  const [copiedAcc, setCopiedAcc] = useState(false);
  const [submittedRegNo, setSubmittedRegNo] = useState<string>("");
  const [session, setSession] = useState<UserSession | null>(() => getCurrentSession());
+ const [buktiRegFile, setBuktiRegFile] = useState<File | null>(null);
+ const [isSubmitting, setIsSubmitting] = useState(false);
+ const [submitError, setSubmitError] = useState("");
  const { t } = useLanguage();
 
  useEffect(() => {
@@ -250,7 +273,11 @@ function PpdbPage() {
     const key = getDraftKey(session.userId);
     const timer = setTimeout(() => {
       if (form.jenjang || form.nama) {
-        localStorage.setItem(key, JSON.stringify(form));
+        // Berkas (File / blob URL) tidak bisa diserialisasi — user melampirkan ulang saat lanjut draft.
+        localStorage.setItem(
+          key,
+          JSON.stringify({ ...form, dokumen: [], dokumenFiles: [], buktiRegUrl: "" })
+        );
         setSaved(true);
         const s = setTimeout(() => setSaved(false), 1400);
         return () => clearTimeout(s);
@@ -1039,30 +1066,37 @@ function PpdbPage() {
                       <input
                         type="file"
                         id={`file-input-${d.id.replace(/\s+/g, "-")}`}
-                        accept="image/*,application/pdf"
+                        accept="image/jpeg,image/png,application/pdf"
                         className="hidden"
                         onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
+                          if (!ALLOWED_UPLOAD_MIME.includes(file.type)) {
+                            alert(t("Format berkas harus JPG, PNG, atau PDF.", "File must be JPG, PNG, or PDF."));
+                            e.target.value = "";
+                            return;
+                          }
+                          if (file.size > MAX_UPLOAD_BYTES) {
+                            alert(t("Ukuran berkas maksimal 10 MB.", "Maximum file size is 10 MB."));
+                            e.target.value = "";
+                            return;
+                          }
                           const sizeStr = file.size > 1024 * 1024 ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(file.size / 1024)} KB`;
                           const label = `${d.id} - ${file.name} (${sizeStr})`;
-                          
-                          let url = "";
+
+                          let prepared: File;
                           try {
-                            url = await compressImageFile(file, 900, 0.75);
+                            prepared = await prepareDocFile(file);
                           } catch {
-                            const reader = new FileReader();
-                            url = await new Promise((res) => {
-                              reader.onload = () => res(reader.result as string);
-                              reader.readAsDataURL(file);
-                            });
+                            prepared = file;
                           }
 
                           const docObj: UploadedDocFile = {
                             id: d.id,
                             name: file.name,
                             size: sizeStr,
-                            url,
+                            url: URL.createObjectURL(prepared),
+                            file: prepared,
                           };
 
                           setForm((f) => ({
@@ -1361,17 +1395,27 @@ function PpdbPage() {
  <span>{form.buktiRegUrl ? t("Ganti Foto Struk", "Change Receipt Photo") : t("Pilih Foto Struk Transfer", "Select Receipt Photo")}</span>
  <input
  type="file"
- accept="image/*"
+ accept="image/jpeg,image/png,application/pdf"
  onChange={async (e) => {
  const file = e.target.files?.[0];
  if (!file) return;
+ if (!ALLOWED_UPLOAD_MIME.includes(file.type)) {
+ alert(t("Format berkas harus JPG, PNG, atau PDF.", "File must be JPG, PNG, or PDF."));
+ e.target.value = "";
+ return;
+ }
+ if (file.size > MAX_UPLOAD_BYTES) {
+ alert(t("Ukuran berkas maksimal 10 MB.", "Maximum file size is 10 MB."));
+ e.target.value = "";
+ return;
+ }
  try {
- const compressed = await compressImageFile(file, 900, 0.75);
- set("buktiRegUrl", compressed);
+ const prepared = await prepareDocFile(file);
+ setBuktiRegFile(prepared);
+ set("buktiRegUrl", URL.createObjectURL(prepared));
  } catch {
- const reader = new FileReader();
- reader.onload = () => set("buktiRegUrl", reader.result as string);
- reader.readAsDataURL(file);
+ setBuktiRegFile(file);
+ set("buktiRegUrl", URL.createObjectURL(file));
  }
  }}
  className="hidden"
@@ -1456,7 +1500,8 @@ function PpdbPage() {
  </AnimatePresence>
 
  {step < 7 && (
- <div className="mt-10 flex items-center justify-between gap-3">
+ <div className="mt-10">
+ <div className="flex items-center justify-between gap-3">
  <button
  onClick={() =>setStep((s) => Math.max(0, s - 1))}
  disabled={step === 0}
@@ -1469,13 +1514,16 @@ function PpdbPage() {
  </span>
  <Magnetic>
  <button
- onClick={() =>{
+ onClick={async () =>{
  if (!valid) return;
             if (step === 6) {
+              if (isSubmitting) return;
+              setIsSubmitting(true);
+              setSubmitError("");
               try {
                 let activeSession = getCurrentSession();
                 if (!activeSession) {
-                  activeSession = ensureUserAccountForPPDB(
+                  activeSession = await ensureUserAccountForPPDB(
                     form.wali || form.namaAyah || form.namaIbu || "Orang Tua",
                     form.email || session?.email || `${form.teleponAyah || form.telepon || Date.now()}@parent.pkbm`,
                     form.teleponAyah || form.telepon
@@ -1484,7 +1532,25 @@ function PpdbPage() {
                 const userId = activeSession.userId;
                 const userEmail = activeSession.email;
 
-                const savedSubmission = savePPDBSubmission({
+                // Upload semua berkas ke Supabase Storage (bucket privat) → simpan path.
+                const uploadedDocs: UploadedDocFile[] = [];
+                for (const doc of form.dokumenFiles || []) {
+                  if (doc.file) {
+                    const path = await uploadDocFile(doc.file, userId);
+                    const entry: UploadedDocFile = { id: doc.id, name: doc.name, url: doc.url, path };
+                    if (doc.size) entry.size = doc.size;
+                    uploadedDocs.push(entry);
+                  } else {
+                    uploadedDocs.push(doc);
+                  }
+                }
+                let buktiPath = "";
+                if (buktiRegFile) {
+                  buktiPath = await uploadDocFile(buktiRegFile, userId);
+                }
+                const adaBukti = Boolean(buktiPath || form.buktiRegUrl);
+
+                const savedSubmission = await savePPDBSubmission({
                   userId,
                   userEmail,
                   jenjang: form.jenjang,
@@ -1532,20 +1598,19 @@ function PpdbPage() {
                   telepon: form.teleponAyah || form.telepon,
                   email: form.email || activeSession.email,
                   dokumen: form.dokumen,
-                  dokumenFiles: form.dokumenFiles || [],
+                  dokumenFiles: uploadedDocs,
                   metode: form.metode || "Transfer Bank BSI",
-                  buktiRegUrl: form.buktiRegUrl,
+                  buktiRegUrl: buktiPath,
                   catatanTambahan: form.catatanTambahan.trim() || undefined,
                   statusPendaftaran: "Menunggu Verifikasi",
-                  statusPembayaran: form.buktiRegUrl ? "Menunggu Konfirmasi" : "Belum Bayar",
+                  statusPembayaran: adaBukti ? "Menunggu Konfirmasi" : "Belum Bayar",
                 });
 
                 if (savedSubmission?.regNo) {
                   setSubmittedRegNo(savedSubmission.regNo);
                 }
-              } catch (err) {
-                console.error("Error saving SPMB submission:", err);
-              } finally {
+
+                // Sukses → bersihkan draft & pindah ke layar selesai.
                 const curSession = getCurrentSession();
                 if (curSession?.userId) {
                   localStorage.removeItem(getDraftKey(curSession.userId));
@@ -1555,21 +1620,36 @@ function PpdbPage() {
                 }
                 localStorage.removeItem("ppdb-draft-zbt-v2");
                 setStep(7);
+              } catch (err) {
+                console.error("Error saving SPMB submission:", err);
+                const msg =
+                  (err as Error).message ||
+                  t("Gagal mengirim pendaftaran. Silakan coba lagi.", "Failed to submit registration. Please try again.");
+                setSubmitError(msg);
+                alert(msg);
+              } finally {
+                setIsSubmitting(false);
               }
               return;
             }
  setStep((s) => s + 1);
  }}
- disabled={!valid}
+ disabled={!valid || isSubmitting}
  className="light-sweep rounded-full bg-gradient-to-r from-gold-soft to-gold px-7 py-3 text-sm font-extrabold uppercase tracking-wide text-navy-deep shadow-gold disabled:opacity-40"
 >
  {step === 5
  ? t("Lanjut ke Pembayaran Form", "Proceed to Payment")
  : step === 6
- ? t("Kirim Pendaftaran & Selesaikan", "Submit & Complete Registration")
+ ? isSubmitting
+ ? t("Mengirim…", "Submitting…")
+ : t("Kirim Pendaftaran & Selesaikan", "Submit & Complete Registration")
  : t("Lanjutkan", "Continue")}
  </button>
  </Magnetic>
+ </div>
+ {submitError && (
+ <p className="mt-3 text-right text-xs font-bold text-destructive">{submitError}</p>
+ )}
  </div>
  )}
  </div>
